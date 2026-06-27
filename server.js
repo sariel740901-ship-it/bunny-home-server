@@ -15,7 +15,8 @@ const supabase = createClient(
 
 // ═══ API 配置 ═════════════════════════════
 const API_KEY = process.env.ANTHROPIC_API_KEY;
-const API_BASE = process.env.ANTHROPIC_BASE_URL || 'https://api.deepseek.com/anthropic';
+const API_URL = 'https://api.deepseek.com/chat/completions';
+const API_MODEL = 'deepseek-chat';
 
 // ═══ 系统提示词 ═══════════════════════════
 const PERSONAS = {
@@ -116,19 +117,24 @@ app.post('/api/chat', async (req, res) => {
       messages.unshift(...history.slice(-20)); // 最近 20 轮
     }
 
-    // 5. 调 API
-    const resp = await fetch(API_BASE + '/v1/messages', {
+    // 5. 调 DeepSeek (OpenAI 兼容格式)
+    // 组装 system prompt 到 messages 头部
+    const apiMessages = [
+      { role: 'system', content: systemPrompt },
+      ...messages
+    ];
+
+    const resp = await fetch(API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
-        'anthropic-version': '2023-06-01'
+        'Authorization': 'Bearer ' + API_KEY
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: API_MODEL,
         max_tokens: 2048,
-        system: systemPrompt,
-        messages: messages
+        temperature: 0.8,
+        messages: apiMessages
       })
     });
 
@@ -138,8 +144,8 @@ app.post('/api/chat', async (req, res) => {
       return res.status(500).json({ error: 'API error: ' + JSON.stringify(data).slice(0, 200) });
     }
 
-    // 6. 提取回复
-    const reply = data.content?.[0]?.text || data.choices?.[0]?.message?.content || '(空)';
+    // 6. 提取回复 (OpenAI 格式)
+    const reply = data.choices?.[0]?.message?.content || '(空)';
 
     // 7. 存入 AI 回复
     if (session_id) {
