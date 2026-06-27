@@ -8,10 +8,21 @@ app.use(cors());
 app.use(express.json());
 
 // ═══ 初始化 Supabase ═══════════════════════
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+let supabase = null;
+try {
+  supabase = createClient(
+    process.env.SUPABASE_URL || '',
+    process.env.SUPABASE_KEY || ''
+  );
+} catch (e) {
+  console.error('Supabase init failed:', e.message);
+}
+
+// Helper: safe Supabase query
+async function safeDB(fn) {
+  if (!supabase) return { data: null, error: 'no database' };
+  try { return await fn(supabase); } catch (e) { return { data: null, error: e.message }; }
+}
 
 // ═══ API 配置 ═════════════════════════════
 const API_KEY = process.env.ANTHROPIC_API_KEY;
