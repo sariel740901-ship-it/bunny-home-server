@@ -88,6 +88,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
   <div class="call-recording" id="callRecording">正在听…</div>
   <div class="call-mic-error" id="callMicError"></div>
   <button id="callPermBtn" class="call-perm-btn" onclick="requestMicAndStart()">🎤 授权麦克风开始通话</button>
+  <button id="callListenBtn" class="call-perm-btn" onclick="tapToListen()" style="display:none">🔊 点击收听回复</button>
   <button class="call-hangup" onclick="toggleCall()">📞</button>
 
 </div>
@@ -243,18 +244,26 @@ async function sendVoiceText(text){
 }
 
 // ═══ Audio Playback (TTS + Web Audio) ═══════════════
+let pendingAudioUrl = null;
 async function speakAsync(text){
-  const audio = new Audio();
-  audio.setAttribute('playsinline','');
   try {
     const r = await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,persona})});
     if(!r.ok) return;
     const blob = await r.blob();
-    audio.src = URL.createObjectURL(blob);
+    pendingAudioUrl = URL.createObjectURL(blob);
     document.getElementById('callSubtitle').textContent = text;
-    await audio.play();
-    await new Promise(res=>{audio.onended=res;audio.onerror=res});
+    // Show a play button — user gesture guarantees playback
+    document.getElementById('callListenBtn').style.display = 'inline-block';
   } catch(e) {}
+}
+
+function tapToListen(){
+  if(!pendingAudioUrl) return;
+  const a = new Audio(pendingAudioUrl);
+  a.setAttribute('playsinline','');
+  a.play();
+  document.getElementById('callListenBtn').style.display = 'none';
+  pendingAudioUrl = null;
 }
 
 </script>
