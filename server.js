@@ -47,6 +47,12 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Bunny Home', timestamp: new Date().toISOString() });
 });
 
+// ═══ 聊天前端 ═════════════════════════════
+app.get('/', (req, res) => {
+  res.sendFile(__dirname + '/public/chat.html');
+});
+app.use(express.static(__dirname + '/public'));
+
 // ═══ 会话管理 ═════════════════════════════
 app.get('/api/sessions', async (req, res) => {
   const { data, error } = await supabase.from('sessions').select('*').order('updated_at', { ascending: false });
