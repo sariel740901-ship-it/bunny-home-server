@@ -153,27 +153,12 @@ async function toggleCall(){
   }
 }
 
-// ═══ Explicit Mic Permission ═════════════════════════
-let callAudioEl=null;
 async function requestMicAndStart(){
   document.getElementById('callMicError').textContent='';
   document.getElementById('callSubtitle').textContent='正在请求麦克风…';
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:!0});
+    const stream = await navigator.mediaDevices.getUserMedia({audio:!0});
     stream.getTracks().forEach(t=>t.stop());
-
-    // Create a persistent audio element and warm it (unlocks autoplay)
-    callAudioEl=new Audio();
-    callAudioEl.setAttribute('playsinline','');
-    callAudioEl.setAttribute('x-webkit-airplay','deny');
-    callAudioEl.volume=1;
-    // Play a silent short clip to unlock audio context
-    const silenceCtx=new(window.AudioContext||window.webkitAudioContext)();
-    const buf=silenceCtx.createBuffer(1,1,22050);
-    const src=silenceCtx.createBufferSource();src.buffer=buf;src.connect(silenceCtx.destination);src.start(0);
-    await new Promise(r=>setTimeout(r,200));
-    silenceCtx.close();
-
     document.getElementById('callPermBtn').style.display='none';
     document.getElementById('callSubtitle').textContent='麦克风已授权。请开始说话。';
     startSTT();
@@ -192,7 +177,7 @@ function startSTT(){
   }
   recognitionWanted=!0;
   recognition=new SpeechRecognition();
-  recognition.lang='en-GB,zh-CN';
+  recognition.lang='zh-CN';
   recognition.interimResults=!0;
   recognition.continuous=!0;
 
@@ -245,28 +230,19 @@ async function sendVoiceText(text){
 
 // ═══ Audio Playback (TTS + Web Audio) ═══════════════
 async function speakAsync(text){
-  speakQueue.push(text);
-  if(speaking)return;
-  speaking=!0;
-  const wasRecognition=recognitionWanted;
-  if(wasRecognition){stopSTT();}
-  while(speakQueue.length>0){
-    const t=speakQueue.shift();
-    document.getElementById('callSubtitle').textContent=t;
-    try{
-      const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,persona})});
-      if(!r.ok){document.getElementById('callSubtitle').textContent+=' (TTS: '+r.status+')';continue;}
-      const blob=await r.blob();
-      callAudioEl.src=URL.createObjectURL(blob);
-      callAudioEl.load();
-      try{await callAudioEl.play()}catch(e2){/* 忽略 autoplay 阻拦——音频已预授权 */}
-      await new Promise(r=>{callAudioEl.onended=r;callAudioEl.onerror=()=>r()});
-    }catch(e){document.getElementById('callSubtitle').textContent+=' (网络异常)';}
-  }
-  document.getElementById('callSubtitle').textContent='正在听…';
-  speaking=!1;
-  if(callOpen&&wasRecognition)startSTT();
+  const audio = new Audio();
+  audio.setAttribute('playsinline','');
+  try {
+    const r = await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,persona})});
+    if(!r.ok) return;
+    const blob = await r.blob();
+    audio.src = URL.createObjectURL(blob);
+    document.getElementById('callSubtitle').textContent = text;
+    await audio.play();
+    await new Promise(res=>{audio.onended=res;audio.onerror=res});
+  } catch(e) {}
 }
+
 </script>
 </body>
 </html>
