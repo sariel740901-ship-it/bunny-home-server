@@ -152,7 +152,7 @@ function startSTT(){
   if(!SpeechRecognition){document.getElementById('callSubtitle').textContent='浏览器不支持语音';return}
   recognitionWanted=!0;
   recognition=new SpeechRecognition();
-  recognition.lang='zh-CN';
+  recognition.lang='en-GB';
   recognition.interimResults=!0;
   recognition.continuous=!0;
 
