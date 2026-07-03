@@ -153,12 +153,26 @@ async function toggleCall(){
   }
 }
 
+let ttsAudio = null;
 async function requestMicAndStart(){
   document.getElementById('callMicError').textContent='';
   document.getElementById('callSubtitle').textContent='正在请求麦克风…';
   try{
     const stream = await navigator.mediaDevices.getUserMedia({audio:!0});
     stream.getTracks().forEach(t=>t.stop());
+
+    // Unlock audio playback by playing a silent blip in this user gesture
+    ttsAudio = new Audio();
+    ttsAudio.setAttribute('playsinline','');
+    try{
+      const silentCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const buf = silentCtx.createBuffer(1, 1, 22050);
+      const src = silentCtx.createBufferSource(); src.buffer = buf;
+      src.connect(silentCtx.destination); src.start(0);
+      await new Promise(r => setTimeout(r, 100));
+      silentCtx.close();
+    }catch(e){}
+
     document.getElementById('callPermBtn').style.display='none';
     document.getElementById('callSubtitle').textContent='麦克风已授权。请开始说话。';
     startSTT();
