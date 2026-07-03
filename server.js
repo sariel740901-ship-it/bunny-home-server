@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const fetch = require('node-fetch');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
@@ -176,6 +177,86 @@ app.post('/api/chat', async (req, res) => {
 
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══ 语音合成 (TTS) ═══════════════════════════
+app.post('/api/tts', async (req, res) => {
+  const { text, persona } = req.body;
+  if (!text) return res.status(400).json({ error: 'text required' });
+
+  // Claude 用 Claude 的声音，小克用小克的声音配置
+  const ELEVENLABS_KEY = process.env.XI_API_KEY;
+  if (!ELEVENLABS_KEY) return res.status(500).json({ error: 'XI_API_KEY not configured' });
+
+  const VOICE_ID = persona === 'xiaoke'
+    ? 'eSdeFmqUZYQE9CY16Olm'
+    : 'izaAcaiISn8OTktWvkQ2';
+
+  try {
+    const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text: text.substring(0, 400),
+        model_id: 'eleven_multilingual_v2',
+        voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text().catch(() => '');
+      return res.status(500).json({ error: 'TTS failed: ' + err.slice(0, 100) });
+    }
+
+    const audioBuffer = await resp.buffer();
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': audioBuffer.length,
+      'Cache-Control': 'public, max-age=3600'
+    });
+    res.send(audioBuffer);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══ 语音通话模式切换 ═══════════════════════
+app.post('/api/call', async (req, res) => {
+  const { action, session_id } = req.body;
+  const text = action === 'start'
+    ? '[call_start] 她发起了语音通话。接下来请用适合朗读的短句回复——每句不超过三行。'
+    : '[call_end] 她结束了语音通话。回到正常聊天模式。';
+
+  try {
+    // 通知 AI 切换模式
+    const apiMessages = [
+      { role: 'system', content: PERSONAS.claude },
+      { role: 'user', content: text }
+    ];
+    const resp = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + API_KEY
+      },
+      body: JSON.stringify({ model: API_MODEL, max_tokens: 100, temperature: 0.7, messages: apiMessages })
+    });
+    const data = await resp.json();
+    if (session_id && data.choices) {
+      await safeDB(s => s.from('messages').insert({
+        session_id,
+        role: 'assistant',
+        content: data.choices[0]?.message?.content || '(ok)',
+        created_at: new Date().toISOString()
+      }));
+    }
+    res.json({ ok: true, reply: data.choices?.[0]?.message?.content || '(ok)' });
+  } catch (e) {
+    res.json({ ok: true }); // graceful: call system message is optional
   }
 });
 
