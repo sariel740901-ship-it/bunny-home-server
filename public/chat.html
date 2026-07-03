@@ -212,6 +212,8 @@ async function speakAsync(text){
 
   while(speakQueue.length>0){
     const t=speakQueue.shift();
+    // Show Claude/Xiaoke caption during playback
+    document.getElementById('callSubtitle').textContent = t;
     try{
       const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,persona})});
       if(!r.ok)continue;
@@ -225,7 +227,7 @@ async function speakAsync(text){
     }catch(e){}
   }
 
-  speaking=!1;
+  speaking=!1;document.getElementById('callSubtitle').textContent='';
   if(callOpen&&wasRecognition)startSTT(); // 读完恢复听
 }
 </script>
