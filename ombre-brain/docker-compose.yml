@@ -1,0 +1,49 @@
+# Ombre Brain — 记忆库部署配置
+# 来源: https://github.com/P0luz/Ombre-Brain (deploy/docker-compose.user.yml)
+#
+# 启动（云端向量化，默认）:
+#   docker compose up -d
+#
+# 启动（本地向量化，离线、无需 key，多起一个 ollama 容器）:
+#   docker compose --profile local up -d
+#   然后到 Dashboard →「③ 引擎 · 本地向量模型」→「下载 bge-m3」→「切本地」
+#
+# 零配置即可启动：首次启动会在 ./buckets/config.yaml 自动生成默认配置，
+# 之后在 Dashboard 里改、即时生效并持久化，重启不丢。
+# ⚠️ 不要用 `- ./config.yaml:/app/config.yaml` 单文件挂载：宿主缺文件时
+#    Docker（尤其 Windows/WSL2）会把它建成目录 → 容器崩溃重启且无法自救。
+
+services:
+  ombre-brain:
+    image: p0luz/ombre-brain:latest
+    container_name: ombre-brain
+    restart: unless-stopped
+    ports:
+      # 对外默认 18001 → 容器内 8000（镜像固定）。换端口：.env 设 OMBRE_HOST_PORT。
+      - "${OMBRE_HOST_PORT:-18001}:8000"
+    environment:
+      - OMBRE_TRANSPORT=streamable-http
+      # config 放进数据卷（./buckets），首启自动生成，Dashboard 改动持久化到这里。
+      - OMBRE_CONFIG_PATH=/app/buckets/config.yaml
+      - OMBRE_COMPRESS_API_KEY=${OMBRE_COMPRESS_API_KEY}
+      - OMBRE_COMPRESS_BASE_URL=${OMBRE_COMPRESS_BASE_URL:-}
+      - OMBRE_COMPRESS_MODEL=${OMBRE_COMPRESS_MODEL:-}
+      - OMBRE_EMBED_API_KEY=${OMBRE_EMBED_API_KEY:-}
+      - OMBRE_EMBED_BASE_URL=${OMBRE_EMBED_BASE_URL:-}
+      - OMBRE_EMBED_MODEL=${OMBRE_EMBED_MODEL:-}
+      - OMBRE_DASHBOARD_PASSWORD=${OMBRE_DASHBOARD_PASSWORD}
+    volumes:
+      - ./buckets:/app/buckets
+
+  # ── 可选：本地向量化（Ollama + bge-m3）。默认不启动 ──
+  # 仅在加 `--profile local` 时才拉起。需约 2–3GB 空闲内存 + 1.2GB 磁盘；纯 CPU 即可。
+  ombre-ollama:
+    image: ollama/ollama:latest
+    container_name: ombre-ollama
+    restart: unless-stopped
+    profiles: ["local"]
+    volumes:
+      - ollama-data:/root/.ollama
+
+volumes:
+  ollama-data:
