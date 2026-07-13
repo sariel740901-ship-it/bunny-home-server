@@ -351,7 +351,7 @@ app.post('/api/call', async (req, res) => {
   try {
     // 通知 AI 切换模式
     const apiMessages = [
-      { role: 'system', content: PERSONAS.claude },
+      { role: 'system', content: PERSONAS.xiaoke },
       { role: 'user', content: text }
     ];
     const resp = await fetch('https://api.deepseek.com/chat/completions', {
