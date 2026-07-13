@@ -297,6 +297,34 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// ═══ 翻译 (通话字幕用: 他说英文,字幕显示中文) ═══
+app.post('/api/translate', async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'text required' });
+  try {
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + API_KEY
+      },
+      body: JSON.stringify({
+        model: API_MODEL,
+        max_tokens: 600,
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: '你是翻译。把用户给出的内容翻译成自然、口语化的简体中文,保留原文的语气和亲昵感。只输出译文,不要任何解释或引号。' },
+          { role: 'user', content: String(text).slice(0, 1200) }
+        ]
+      })
+    });
+    const data = await resp.json();
+    res.json({ zh: data.choices?.[0]?.message?.content || '' });
+  } catch (e) {
+    res.json({ zh: '' });
+  }
+});
+
 // ═══ 语音合成 (TTS) ═══════════════════════════
 app.post('/api/tts', async (req, res) => {
   const { text, persona } = req.body;

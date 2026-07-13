@@ -308,8 +308,20 @@ async function playBuf(arrayBuf){
   await new Promise(r=>{src.onended=r});
 }
 
+// 中文字幕: 他说英文,字幕显示中文(翻译与语音并行,译文到了就替换字幕)
+let zhLock=!1;
+function showZhSubtitle(text){
+  zhLock=!1;
+  if(!/[a-zA-Z]{2}/.test(text))return; // 本来就是中文就不用翻
+  fetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})})
+    .then(r=>r.json())
+    .then(d=>{if(d.zh&&callOpen){zhLock=!0;document.getElementById('callSubtitle').textContent=d.zh}})
+    .catch(()=>{});
+}
+
 async function speakAsync(text){
   speakQueue=splitForTTS(text);
+  showZhSubtitle(text);
   if(speaking)return;
   speaking=!0;
   try{
@@ -319,7 +331,7 @@ async function speakAsync(text){
       idx++;
       nextBuf=idx<speakQueue.length?fetchTTS(speakQueue[idx]):null; // 预取下一段
       if(!buf)continue;
-      document.getElementById('callSubtitle').textContent=chunk;
+      if(!zhLock)document.getElementById('callSubtitle').textContent=chunk;
       await playBuf(buf);
     }
   }catch(e){}
