@@ -4,35 +4,61 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f8f3ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#211f1c" media="(prefers-color-scheme: dark)">
 <title>Bunny Home</title>
 <style>
-:root{--bg:#faf8f5;--card:#fff;--text:#3d3a35;--muted:#8c8a85;--border:#e8e4dd;--xiaoke:#e898a4;--claude:#7489b4;--r:12px}
+:root{
+  --bg:#f8f3ec;--bg2:#f2eae0;--card:#fffdfa;--text:#3d3a35;--muted:#95908a;--border:#e9e2d8;
+  --xiaoke:#e898a4;--xiaoke-deep:#d97f8e;--claude:#7489b4;--claude-deep:#5f76a6;
+  --topbar:rgba(255,252,248,.82);--chip:#efe9e0;--r:18px;
+  --shadow:0 1px 2px rgba(80,60,40,.05),0 4px 14px rgba(80,60,40,.06)
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#211f1c;--bg2:#191815;--card:#2b2823;--text:#eae5dd;--muted:#9a948a;--border:#3b362e;
+  --topbar:rgba(30,28,25,.82);--chip:#37332c;
+  --shadow:0 1px 2px rgba(0,0,0,.25),0 4px 14px rgba(0,0,0,.28)
+}}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--text);height:100vh;overflow:hidden}
 .app{height:100vh;display:flex;flex-direction:column;position:relative}
-.topbar{background:var(--card);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.topbar h1{font-size:16px;font-weight:600}
+.topbar{background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.topbar h1{font-size:16px;font-weight:700;letter-spacing:.3px}
 .topbar .actions{display:flex;align-items:center;gap:8px}
-.sw{display:flex;background:#f0edeb;border-radius:16px;padding:2px}
-.sw button{padding:5px 14px;border:none;border-radius:14px;font-size:12px;cursor:pointer;background:transparent;color:var(--muted);transition:.2s;font-family:inherit;font-weight:500}
-.sw button.on{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.1)}
+.sw{display:flex;background:var(--chip);border-radius:18px;padding:3px}
+.sw button{padding:5px 14px;border:none;border-radius:15px;font-size:12px;cursor:pointer;background:transparent;color:var(--muted);transition:.25s;font-family:inherit;font-weight:600}
+.sw button.on{background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .sw button.on.xiao{color:#c97a88}.sw button.on.claude{color:#5a75a0}
-.call-btn{width:32px;height:32px;border-radius:50%;border:none;font-size:16px;cursor:pointer;background:#f0edeb;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.call-btn{width:34px;height:34px;border-radius:50%;border:none;font-size:16px;cursor:pointer;background:var(--chip);display:flex;align-items:center;justify-content:center;transition:all .2s}
+.call-btn:hover{transform:scale(1.06)}
 .call-btn.active{background:#5c8a5c;color:#fff;animation:pulse 1.5s infinite}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(92,138,92,.4)}50%{box-shadow:0 0 0 8px rgba(92,138,92,0)}}
-.msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
-.empty{text-align:center;color:var(--muted);font-size:14px;padding:48px 0}
-.msg{max-width:80%;padding:10px 14px;border-radius:var(--r);font-size:14px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
-.msg.user{margin-left:auto;background:var(--claude);color:#fff;border-bottom-right-radius:4px}
-.msg.assistant{margin-right:auto;background:var(--card);border:1px solid var(--border);border-bottom-left-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.msg.assistant.xiaoke{border-left:3px solid var(--xiaoke)}
-.msg.assistant.claude{border-left:3px solid var(--claude)}
-.input{padding:12px 16px;background:var(--card);border-top:1px solid var(--border);display:flex;gap:8px;flex-shrink:0}
-.input textarea{flex:1;padding:10px 14px;border:1px solid var(--border);border-radius:var(--r);font-size:14px;resize:none;outline:none;background:var(--bg);font-family:inherit;max-height:80px}
-.input textarea:focus{border-color:#9b8c7d}
-.input button{padding:10px 20px;background:var(--claude);color:#fff;border:none;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap}
-.input button:hover{opacity:.9}.input button.xiao{background:var(--xiaoke)}
-.typing{animation:blink 1s infinite}@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.msgs{flex:1;overflow-y:auto;padding:18px 16px 24px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
+.msgs::-webkit-scrollbar{width:5px}
+.msgs::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.empty{text-align:center;color:var(--muted);font-size:14px;padding:64px 0 48px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.empty::before{content:'🐰';font-size:44px;animation:float 3.5s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.msg{max-width:80%;padding:11px 15px;border-radius:var(--r);font-size:14.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word;animation:fadeUp .28s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.msg.user{margin-left:auto;color:#fff;border-bottom-right-radius:6px;background:linear-gradient(135deg,var(--claude),var(--claude-deep));box-shadow:var(--shadow)}
+.msg.user.xiaoke{background:linear-gradient(135deg,var(--xiaoke),var(--xiaoke-deep))}
+.msg.assistant{margin-right:auto;margin-left:40px;position:relative;background:var(--card);border:1px solid var(--border);border-bottom-left-radius:6px;box-shadow:var(--shadow)}
+.msg.assistant::before{content:'✨';position:absolute;left:-40px;bottom:0;width:30px;height:30px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:var(--shadow)}
+.msg.assistant.xiaoke::before{content:'🐰'}
+.msg.assistant.xiaoke{border-color:color-mix(in srgb,var(--xiaoke) 35%,var(--border))}
+.msg.assistant.claude{border-color:color-mix(in srgb,var(--claude) 30%,var(--border))}
+.input{padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0;align-items:flex-end}
+.input textarea{flex:1;padding:11px 16px;border:1px solid var(--border);border-radius:22px;font-size:14.5px;resize:none;outline:none;background:var(--card);color:var(--text);font-family:inherit;max-height:96px;transition:border-color .2s,box-shadow .2s}
+.input textarea:focus{border-color:var(--claude);box-shadow:0 0 0 3px color-mix(in srgb,var(--claude) 15%,transparent)}
+.input textarea::placeholder{color:var(--muted)}
+.input button{padding:11px 22px;background:linear-gradient(135deg,var(--claude),var(--claude-deep));color:#fff;border:none;border-radius:22px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:transform .15s,opacity .2s;box-shadow:var(--shadow)}
+.input button:hover{opacity:.92}.input button:active{transform:scale(.96)}
+.input button.xiao{background:linear-gradient(135deg,var(--xiaoke),var(--xiaoke-deep))}
+.typing{display:inline-flex;gap:5px;padding:5px 2px;align-items:center}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:bounce 1.2s ease-in-out infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:none;opacity:.35}30%{transform:translateY(-4px);opacity:1}}
 
 /* Call overlay */
 .call-overlay{display:none;position:fixed;inset:0;background:linear-gradient(160deg,#1a1a2e,#16213e,#0f3460);z-index:50;flex-direction:column;align-items:center;justify-content:center;gap:20px}
@@ -111,7 +137,7 @@ async function send(){
   if(!text||loading)return;inp.value='';loading=!0;
   document.getElementById('welcome').style.display='none';
   addMsg('user',text);
-  const div=addMsg('assistant','<span class="typing">...</span>');div.classList.add(persona);
+  const div=addMsg('assistant','<span class="typing"><i></i><i></i><i></i></span>');
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text,persona})});
     const d=await r.json();
@@ -122,7 +148,7 @@ async function send(){
 }
 
 function addMsg(role,content){
-  const d=document.createElement('div');d.className='msg '+role;if(role==='assistant')d.classList.add(persona);
+  const d=document.createElement('div');d.className='msg '+role+' '+persona;
   d.innerHTML=content;document.getElementById('msgs').appendChild(d);
   d.scrollIntoView({behavior:'smooth'});return d;
 }
