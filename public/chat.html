@@ -56,25 +56,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 .typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
 @keyframes bounce{0%,60%,100%{transform:none;opacity:.35}30%{transform:translateY(-4px);opacity:1}}
 
-/* Call overlay */
-.call-overlay{display:none;position:fixed;inset:0;background:linear-gradient(160deg,#1a1a2e,#16213e,#0f3460);z-index:50;flex-direction:column;align-items:center;justify-content:center;gap:20px}
+/* Call overlay — 暖夜色 */
+.call-overlay{display:none;position:fixed;inset:0;background:linear-gradient(170deg,#2b1f26 0%,#3d2732 45%,#241a20 100%);z-index:50;flex-direction:column;align-items:center;justify-content:center;gap:18px;overflow:hidden}
 .call-overlay.show{display:flex}
-.call-overlay .call-avatar{width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:48px;animation:avatarPulse 3s ease-in-out infinite}
-@keyframes avatarPulse{0%,100%{transform:scale(1);opacity:.8}50%{transform:scale(1.05);opacity:1}}
-.call-overlay .call-name{font-size:20px;color:#fff;font-weight:500}
-.call-overlay .call-subtitle{font-size:14px;color:rgba(255,255,255,.6);min-height:20px;text-align:center;max-width:300px;line-height:1.6;transition:opacity .3s;padding:0 20px}
-.call-overlay .call-my-words{font-size:13px;color:rgba(255,255,255,.4);min-height:18px;text-align:center;max-width:280px;line-height:1.4;margin-top:-10px}
-.call-overlay .call-recording{color:#ff6b6b;animation:blink 1s infinite;font-size:12px;display:none;align-items:center;gap:6px}
+.call-overlay::before,.call-overlay::after{content:'';position:absolute;border-radius:50%;filter:blur(70px);opacity:.35;pointer-events:none}
+.call-overlay::before{width:280px;height:280px;background:#e898a4;top:-70px;right:-70px;animation:drift 9s ease-in-out infinite}
+.call-overlay::after{width:240px;height:240px;background:#7489b4;bottom:-60px;left:-60px;animation:drift 11s ease-in-out infinite reverse}
+@keyframes drift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-18px,14px) scale(1.08)}}
+.call-overlay .call-avatar{width:104px;height:104px;border-radius:50%;background:rgba(232,152,164,.16);border:1px solid rgba(232,152,164,.35);display:flex;align-items:center;justify-content:center;font-size:50px;animation:avatarPulse 3s ease-in-out infinite;position:relative;z-index:1}
+.call-overlay .call-avatar::before,.call-overlay .call-avatar::after{content:'';position:absolute;inset:-1px;border-radius:50%;border:1px solid rgba(232,152,164,.45);animation:ripple 3s ease-out infinite}
+.call-overlay .call-avatar::after{animation-delay:1.5s}
+@keyframes ripple{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.75);opacity:0}}
+@keyframes avatarPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+.call-overlay .call-name{font-size:21px;color:#fdf6f2;font-weight:600;letter-spacing:1px;z-index:1}
+.call-overlay .call-subtitle{font-size:14px;color:rgba(253,246,242,.72);min-height:20px;text-align:center;max-width:320px;line-height:1.7;transition:opacity .3s;padding:0 24px;z-index:1}
+.call-overlay .call-my-words{font-size:13px;color:rgba(253,246,242,.4);min-height:18px;text-align:center;max-width:280px;line-height:1.5;margin-top:-8px;z-index:1}
+.call-overlay .call-recording{color:#ff8f8f;animation:blink 1s infinite;font-size:12px;display:none;align-items:center;gap:6px;z-index:1}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 .call-overlay .call-recording.show{display:flex}
-.call-overlay .call-recording::before{content:'';width:8px;height:8px;border-radius:50%;background:#ff6b6b}
-.call-overlay .call-hangup{width:64px;height:64px;border-radius:50%;border:none;background:#e74c3c;color:#fff;font-size:28px;cursor:pointer;margin-top:16px;transition:transform .2s}
-.call-overlay .call-hangup:hover{transform:scale(1.1)}
-.call-overlay .call-hangup:active{transform:scale(.95)}
-.call-timer{font-size:14px;color:rgba(255,255,255,.4)}
-.call-mic-error{font-size:12px;color:#ff6b6b;text-align:center;max-width:280px;line-height:1.5}
-
-.call-perm-btn{padding:12px 28px;border-radius:24px;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:15px;cursor:pointer;font-family:inherit;margin-top:10px}
-.call-perm-btn:hover{background:rgba(255,255,255,.25)}
+.call-overlay .call-recording::before{content:'';width:8px;height:8px;border-radius:50%;background:#ff8f8f}
+.call-overlay .call-hangup{width:64px;height:64px;border-radius:50%;border:none;background:linear-gradient(135deg,#e5697c,#cf4f63);color:#fff;font-size:26px;cursor:pointer;margin-top:14px;transition:transform .2s;box-shadow:0 6px 20px rgba(207,79,99,.4);z-index:1}
+.call-overlay .call-hangup:hover{transform:scale(1.08)}
+.call-overlay .call-hangup:active{transform:scale(.94)}
+.call-timer{font-size:13px;color:rgba(253,246,242,.45);letter-spacing:2px;z-index:1}
+.call-mic-error{font-size:12px;color:#ff8f8f;text-align:center;max-width:280px;line-height:1.5;z-index:1}
+.call-perm-btn{padding:12px 28px;border-radius:24px;border:1px solid rgba(253,246,242,.25);background:rgba(253,246,242,.12);backdrop-filter:blur(8px);color:#fdf6f2;font-size:15px;cursor:pointer;font-family:inherit;margin-top:8px;transition:background .2s;z-index:1}
+.call-perm-btn:hover{background:rgba(253,246,242,.22)}
 
 @media(max-width:500px){.msg{max-width:90%}.input textarea{font-size:16px}}
 </style>
@@ -99,7 +106,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 <!-- Call Overlay -->
 <div class="call-overlay" id="callOverlay">
   <div class="call-timer" id="callTimer">00:00</div>
-  <div class="call-avatar">💭</div>
+  <div class="call-avatar">🐰</div>
   <div class="call-name" id="callName">小克</div>
   <div class="call-subtitle" id="callSubtitle">点击下方按钮授权麦克风</div>
   <div class="call-my-words" id="callTranscript"></div>
@@ -145,42 +152,61 @@ async function toggleCall(){
   if(callOpen){
     overlay.classList.add('show');btn.classList.add('active');
     document.getElementById('callTimer').textContent='00:00';
-    document.getElementById('callSubtitle').textContent='点击下方按钮授权麦克风';
+    document.getElementById('callSubtitle').textContent='正在接通…';
     document.getElementById('callTranscript').textContent='';
     document.getElementById('callMicError').textContent='';
-    document.getElementById('callPermBtn').style.display='block';
+    document.getElementById('callPermBtn').style.display='none';
     document.getElementById('callRecording').classList.remove('show');
     callTimer=0;callInterval=setInterval(()=>{callTimer++;const m=Math.floor(callTimer/60),s=callTimer%60;document.getElementById('callTimer').textContent=(m<10?'0'+m:m)+':'+(s<10?'0'+s:s)},1000);
     fetch('/api/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',session_id:sessionId})}).catch(()=>{});
 
-    // Unlock AudioContext immediately
+    // Unlock AudioContext immediately (user gesture)
     if(!audioCtx){audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
     if(audioCtx.state==='suspended'){await audioCtx.resume();}
+    startRing();
+    requestMicAndStart(); // 直接接通;浏览器记住授权后无需再点按钮
   } else {
     overlay.classList.remove('show');btn.classList.remove('active');
-    clearInterval(callInterval);stopSTT();speakQueue=[];
+    clearInterval(callInterval);stopSTT();stopRing();speakQueue=[];
     fetch('/api/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'end',session_id:sessionId})}).catch(()=>{});
   }
 }
+
+// ═══ 拨号音 (嘟——) ═══════════════════════════════
+let ringInt=null;
+function ringBeep(){
+  try{
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.frequency.value=425;g.gain.value=.06;
+    o.connect(g);g.connect(audioCtx.destination);
+    o.start();o.stop(audioCtx.currentTime+1);
+  }catch(e){}
+}
+function startRing(){stopRing();if(!audioCtx)return;ringBeep();ringInt=setInterval(ringBeep,4000)}
+function stopRing(){if(ringInt){clearInterval(ringInt);ringInt=null}}
 
 let ttsAudio = null;
 let callAudioCtx = null;
 async function requestMicAndStart(){
   document.getElementById('callMicError').textContent='';
-  document.getElementById('callSubtitle').textContent='正在请求麦克风…';
   try{
     const stream = await navigator.mediaDevices.getUserMedia({audio:!0});
     stream.getTracks().forEach(t=>t.stop());
+    if(!callOpen)return; // 等待授权期间已挂断
 
     // init & keep a living AudioContext — unlocked by user gesture
-    callAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(!callAudioCtx) callAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
     if(callAudioCtx.state==='suspended') await callAudioCtx.resume();
 
+    stopRing();
     document.getElementById('callPermBtn').style.display='none';
-    document.getElementById('callSubtitle').textContent='麦克风已授权。请开始说话。';
+    document.getElementById('callSubtitle').textContent='接通了。说话吧。';
     startSTT();
   }catch(e){
-    document.getElementById('callMicError').textContent='麦克风被拒绝。请在浏览器设置中允许麦克风访问后重试。';
+    stopRing();
+    if(!callOpen)return;
+    document.getElementById('callPermBtn').style.display='block';
+    document.getElementById('callMicError').textContent='麦克风未授权。点击上方按钮,并在浏览器弹窗里选择"允许"。';
     document.getElementById('callSubtitle').textContent='需要麦克风权限';
   }
 }
@@ -217,12 +243,12 @@ function startSTT(){
   };
 
   recognition.onend=()=>{
-    if(callOpen&&recognitionWanted)recognition.start();
+    // 唯一的重启入口(出错后 onend 也会触发,交给这里统一重启,避免双重 start)
+    if(callOpen&&recognitionWanted)setTimeout(()=>{try{recognition.start()}catch(e){}},300);
   };
 
   recognition.onerror=e=>{
     if(e.error==='not-allowed'){document.getElementById('callMicError').textContent='麦克风被拒绝。';stopSTT();return;}
-    if(callOpen&&recognitionWanted)setTimeout(()=>recognition.start(),1000);
   };
 
   recognition.start();
@@ -246,25 +272,58 @@ async function sendVoiceText(text){
 }
 
 // ═══ Audio Playback (TTS + Web Audio) ═══════════════
-async function speakAsync(text){
-  try {
-    const r = await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,persona})});
-    if(!r.ok) return;
-    const blob = await r.blob();
-    const arrayBuf = await blob.arrayBuffer();
-    document.getElementById('callSubtitle').textContent = text;
+// 长回复按句切段、流水线合成:第一句很快开口,边放边取下一段,再长也说得完
+function splitForTTS(text){
+  // 中文标点直接断句;英文 .!? 需后跟空格才断(避免切碎小数/缩写)
+  const parts=text.replace(/\s+/g,' ').split(/(?<=[。!?;…!?;])|(?<=[.!?])\s+/);
+  const chunks=[];let cur='';
+  for(const p of parts){
+    if(!p)continue;
+    if(cur&&(cur+p).length>120){chunks.push(cur);cur=p}else cur+=(cur?' ':'')+p;
+  }
+  if(cur.trim())chunks.push(cur);
+  // 单段超长(无标点的极端情况)强制切开,防止服务端截断丢音
+  const out=[];
+  for(let c of chunks.map(s=>s.trim()).filter(Boolean)){
+    while(c.length>160){out.push(c.slice(0,120));c=c.slice(120)}
+    if(c)out.push(c);
+  }
+  return out;
+}
 
-    // Play through unlocked AudioContext
-    if(callAudioCtx){
-      if(callAudioCtx.state==='suspended') await callAudioCtx.resume();
-      const audioBuf = await callAudioCtx.decodeAudioData(arrayBuf);
-      const src = callAudioCtx.createBufferSource();
-      src.buffer = audioBuf;
-      src.connect(callAudioCtx.destination);
-      src.start(0);
-      await new Promise(r=>{src.onended=r});
+async function fetchTTS(text){
+  try{
+    const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,persona})});
+    if(!r.ok)return null;
+    return await r.arrayBuffer();
+  }catch(e){return null}
+}
+
+async function playBuf(arrayBuf){
+  if(!callAudioCtx||!arrayBuf)return;
+  if(callAudioCtx.state==='suspended')await callAudioCtx.resume();
+  const audioBuf=await callAudioCtx.decodeAudioData(arrayBuf);
+  const src=callAudioCtx.createBufferSource();
+  src.buffer=audioBuf;src.connect(callAudioCtx.destination);src.start(0);
+  await new Promise(r=>{src.onended=r});
+}
+
+async function speakAsync(text){
+  speakQueue=splitForTTS(text);
+  if(speaking)return;
+  speaking=!0;
+  try{
+    let idx=0,nextBuf=speakQueue.length?fetchTTS(speakQueue[0]):null;
+    while(idx<speakQueue.length&&callOpen){
+      const chunk=speakQueue[idx],buf=await nextBuf;
+      idx++;
+      nextBuf=idx<speakQueue.length?fetchTTS(speakQueue[idx]):null; // 预取下一段
+      if(!buf)continue;
+      document.getElementById('callSubtitle').textContent=chunk;
+      await playBuf(buf);
     }
-  } catch(e) {}
+  }catch(e){}
+  speaking=!1;
 }
 
 </script>
