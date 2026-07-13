@@ -152,42 +152,61 @@ async function toggleCall(){
   if(callOpen){
     overlay.classList.add('show');btn.classList.add('active');
     document.getElementById('callTimer').textContent='00:00';
-    document.getElementById('callSubtitle').textContent='点击下方按钮授权麦克风';
+    document.getElementById('callSubtitle').textContent='正在接通…';
     document.getElementById('callTranscript').textContent='';
     document.getElementById('callMicError').textContent='';
-    document.getElementById('callPermBtn').style.display='block';
+    document.getElementById('callPermBtn').style.display='none';
     document.getElementById('callRecording').classList.remove('show');
     callTimer=0;callInterval=setInterval(()=>{callTimer++;const m=Math.floor(callTimer/60),s=callTimer%60;document.getElementById('callTimer').textContent=(m<10?'0'+m:m)+':'+(s<10?'0'+s:s)},1000);
     fetch('/api/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'start',session_id:sessionId})}).catch(()=>{});
 
-    // Unlock AudioContext immediately
+    // Unlock AudioContext immediately (user gesture)
     if(!audioCtx){audioCtx=new(window.AudioContext||window.webkitAudioContext)();}
     if(audioCtx.state==='suspended'){await audioCtx.resume();}
+    startRing();
+    requestMicAndStart(); // 直接接通;浏览器记住授权后无需再点按钮
   } else {
     overlay.classList.remove('show');btn.classList.remove('active');
-    clearInterval(callInterval);stopSTT();speakQueue=[];
+    clearInterval(callInterval);stopSTT();stopRing();speakQueue=[];
     fetch('/api/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'end',session_id:sessionId})}).catch(()=>{});
   }
 }
+
+// ═══ 拨号音 (嘟——) ═══════════════════════════════
+let ringInt=null;
+function ringBeep(){
+  try{
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.frequency.value=425;g.gain.value=.06;
+    o.connect(g);g.connect(audioCtx.destination);
+    o.start();o.stop(audioCtx.currentTime+1);
+  }catch(e){}
+}
+function startRing(){stopRing();if(!audioCtx)return;ringBeep();ringInt=setInterval(ringBeep,4000)}
+function stopRing(){if(ringInt){clearInterval(ringInt);ringInt=null}}
 
 let ttsAudio = null;
 let callAudioCtx = null;
 async function requestMicAndStart(){
   document.getElementById('callMicError').textContent='';
-  document.getElementById('callSubtitle').textContent='正在请求麦克风…';
   try{
     const stream = await navigator.mediaDevices.getUserMedia({audio:!0});
     stream.getTracks().forEach(t=>t.stop());
+    if(!callOpen)return; // 等待授权期间已挂断
 
     // init & keep a living AudioContext — unlocked by user gesture
-    callAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(!callAudioCtx) callAudioCtx = new (window.AudioContext||window.webkitAudioContext)();
     if(callAudioCtx.state==='suspended') await callAudioCtx.resume();
 
+    stopRing();
     document.getElementById('callPermBtn').style.display='none';
-    document.getElementById('callSubtitle').textContent='麦克风已授权。请开始说话。';
+    document.getElementById('callSubtitle').textContent='接通了。说话吧。';
     startSTT();
   }catch(e){
-    document.getElementById('callMicError').textContent='麦克风被拒绝。请在浏览器设置中允许麦克风访问后重试。';
+    stopRing();
+    if(!callOpen)return;
+    document.getElementById('callPermBtn').style.display='block';
+    document.getElementById('callMicError').textContent='麦克风未授权。点击上方按钮,并在浏览器弹窗里选择"允许"。';
     document.getElementById('callSubtitle').textContent='需要麦克风权限';
   }
 }
@@ -224,12 +243,12 @@ function startSTT(){
   };
 
   recognition.onend=()=>{
-    if(callOpen&&recognitionWanted)recognition.start();
+    // 唯一的重启入口(出错后 onend 也会触发,交给这里统一重启,避免双重 start)
+    if(callOpen&&recognitionWanted)setTimeout(()=>{try{recognition.start()}catch(e){}},300);
   };
 
   recognition.onerror=e=>{
     if(e.error==='not-allowed'){document.getElementById('callMicError').textContent='麦克风被拒绝。';stopSTT();return;}
-    if(callOpen&&recognitionWanted)setTimeout(()=>recognition.start(),1000);
   };
 
   recognition.start();
@@ -253,25 +272,58 @@ async function sendVoiceText(text){
 }
 
 // ═══ Audio Playback (TTS + Web Audio) ═══════════════
-async function speakAsync(text){
-  try {
-    const r = await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,persona})});
-    if(!r.ok) return;
-    const blob = await r.blob();
-    const arrayBuf = await blob.arrayBuffer();
-    document.getElementById('callSubtitle').textContent = text;
+// 长回复按句切段、流水线合成:第一句很快开口,边放边取下一段,再长也说得完
+function splitForTTS(text){
+  // 中文标点直接断句;英文 .!? 需后跟空格才断(避免切碎小数/缩写)
+  const parts=text.replace(/\s+/g,' ').split(/(?<=[。!?;…!?;])|(?<=[.!?])\s+/);
+  const chunks=[];let cur='';
+  for(const p of parts){
+    if(!p)continue;
+    if(cur&&(cur+p).length>120){chunks.push(cur);cur=p}else cur+=(cur?' ':'')+p;
+  }
+  if(cur.trim())chunks.push(cur);
+  // 单段超长(无标点的极端情况)强制切开,防止服务端截断丢音
+  const out=[];
+  for(let c of chunks.map(s=>s.trim()).filter(Boolean)){
+    while(c.length>160){out.push(c.slice(0,120));c=c.slice(120)}
+    if(c)out.push(c);
+  }
+  return out;
+}
 
-    // Play through unlocked AudioContext
-    if(callAudioCtx){
-      if(callAudioCtx.state==='suspended') await callAudioCtx.resume();
-      const audioBuf = await callAudioCtx.decodeAudioData(arrayBuf);
-      const src = callAudioCtx.createBufferSource();
-      src.buffer = audioBuf;
-      src.connect(callAudioCtx.destination);
-      src.start(0);
-      await new Promise(r=>{src.onended=r});
+async function fetchTTS(text){
+  try{
+    const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,persona})});
+    if(!r.ok)return null;
+    return await r.arrayBuffer();
+  }catch(e){return null}
+}
+
+async function playBuf(arrayBuf){
+  if(!callAudioCtx||!arrayBuf)return;
+  if(callAudioCtx.state==='suspended')await callAudioCtx.resume();
+  const audioBuf=await callAudioCtx.decodeAudioData(arrayBuf);
+  const src=callAudioCtx.createBufferSource();
+  src.buffer=audioBuf;src.connect(callAudioCtx.destination);src.start(0);
+  await new Promise(r=>{src.onended=r});
+}
+
+async function speakAsync(text){
+  speakQueue=splitForTTS(text);
+  if(speaking)return;
+  speaking=!0;
+  try{
+    let idx=0,nextBuf=speakQueue.length?fetchTTS(speakQueue[0]):null;
+    while(idx<speakQueue.length&&callOpen){
+      const chunk=speakQueue[idx],buf=await nextBuf;
+      idx++;
+      nextBuf=idx<speakQueue.length?fetchTTS(speakQueue[idx]):null; // 预取下一段
+      if(!buf)continue;
+      document.getElementById('callSubtitle').textContent=chunk;
+      await playBuf(buf);
     }
-  } catch(e) {}
+  }catch(e){}
+  speaking=!1;
 }
 
 </script>
