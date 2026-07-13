@@ -69,9 +69,12 @@ async function ombreLogin() {
 
 function ombreItemText(it) {
   if (typeof it === 'string') return it;
-  const text = it.summary || it.content || it.text || it.digest || it.title || '';
-  const name = it.name || it.title || '';
-  return (name && text && name !== text ? name + ': ' : '') + (text || JSON.stringify(it).slice(0, 200));
+  // Ombre /api/search 返回 { id, name, score, domain, content_preview, ... }
+  const text = it.content_preview || it.summary || it.content || it.text || it.digest || '';
+  const name = (it.name || it.title || '').replace(/^[\d\- :]+/, '').trim(); // 去掉时间戳前缀
+  if (!text && !name) return '';
+  if (name && text) return name + ' — ' + text;
+  return text || name;
 }
 
 async function ombreRecall(query, maxItems = 5) {
@@ -89,7 +92,8 @@ async function ombreRecall(query, maxItems = 5) {
     const items = Array.isArray(data) ? data
       : (data.results || data.buckets || data.items || data.data || []);
     if (!Array.isArray(items) || items.length === 0) return '';
-    return items.slice(0, maxItems).map(ombreItemText).join('\n').slice(0, 1500);
+    return items.slice(0, maxItems).map(ombreItemText).filter(Boolean)
+      .map(t => '· ' + t).join('\n').slice(0, 1500);
   } catch (e) {
     console.error('ombre recall skipped:', e.message);
     return '';
