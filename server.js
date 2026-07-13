@@ -100,6 +100,37 @@ async function ombreRecall(query, maxItems = 5) {
   }
 }
 
+// 写入记忆: 走 OB 的导入接口(cookie 鉴权,纯文本会被自动脱水打标入桶)
+async function ombreHold(text) {
+  if (!OMBRE_URL || !OMBRE_PASSWORD || !text) return false;
+  const boundary = '----bunnyhold' + Date.now();
+  const body = Buffer.concat([
+    Buffer.from('--' + boundary + '\r\n'
+      + 'Content-Disposition: form-data; name="file"; filename="bunny-hold-' + Date.now() + '.txt"\r\n'
+      + 'Content-Type: text/plain\r\n\r\n'),
+    Buffer.from(text, 'utf8'),
+    Buffer.from('\r\n--' + boundary + '--\r\n')
+  ]);
+  const doUpload = () => fetch(OMBRE_URL + '/api/import/upload', {
+    method: 'POST',
+    headers: { Cookie: ombreCookie, 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+    body,
+    timeout: 8000
+  });
+  try {
+    if (!ombreCookie) await ombreLogin();
+    let resp = await doUpload();
+    if (resp.status === 401 || resp.status === 403) {
+      await ombreLogin();
+      resp = await doUpload();
+    }
+    return resp.ok;
+  } catch (e) {
+    console.error('ombre hold skipped:', e.message);
+    return false;
+  }
+}
+
 // 桥接自检: 浏览器访问 /api/memory-bridge-test?q=关键词 直接看检索结果
 app.get('/api/memory-bridge-test', async (req, res) => {
   if (!OMBRE_URL || !OMBRE_PASSWORD) {
@@ -188,6 +219,17 @@ app.post('/api/chat', async (req, res) => {
       history = (msgs || []).map(m => ({ role: m.role, content: m.content }));
     }
 
+    // 2.5 「记住」指令: 以"记住"开头的消息写入 OB 记忆河
+    let holdNote = '';
+    const holdMatch = message.match(/^记住[:：,，、\s]*([\s\S]+)/);
+    if (holdMatch) {
+      const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // 北京时间
+      const saved = await ombreHold(today + ' 她在bunny的家里让小克记住: ' + holdMatch[1].trim());
+      holdNote = saved
+        ? '\n\n【系统】她刚才让你记住的事已成功写入你们共同的记忆库。回复时自然地确认你记下了,不要提"系统"或"数据库"。'
+        : '\n\n【系统】她让你记住一件事,但记忆库此刻不在线,没有写入成功。温和地告诉她:等家里电脑开着的时候再跟你说一次,你一定记牢。';
+    }
+
     // 3. 加载记忆 (Supabase 摘要 + Ombre Brain 记忆河并行取)
     const [{ data: memories }, ombreMemText] = await Promise.all([
       supabase.from('memories')
@@ -202,7 +244,8 @@ app.post('/api/chat', async (req, res) => {
       + (ombreMemText
         ? '\n\n【记忆河 · 与她这句话相关的过往】\n' + ombreMemText
           + '\n(这些是你们真实的共同记忆。让它们自然地影响你的回应,像自己想起来的一样,不要机械复述。)'
-        : '');
+        : '')
+      + holdNote;
 
     const messages = [{ role: 'user', content: message }];
     if (history.length > 0) {
