@@ -45,6 +45,67 @@ const PERSONAS = {
 重要：不要在回复里自我介绍、不要复述你是谁、不要解释你是什么。直接回答。始终用英文回复，哪怕她说的是中文。`
 };
 
+// ═══ Ombre Brain 记忆桥 ══════════════════
+// 让小克在回复前先去记忆库"想起"相关的过往。
+// 需要环境变量: OMBRE_URL (如 https://brain.jiakeparents.top)、OMBRE_PASSWORD (Dashboard 密码)。
+// 记忆库不在线时静默跳过,不影响聊天。
+const OMBRE_URL = (process.env.OMBRE_URL || '').replace(/\/$/, '');
+const OMBRE_PASSWORD = process.env.OMBRE_PASSWORD || '';
+let ombreCookie = null;
+
+async function ombreLogin() {
+  const resp = await fetch(OMBRE_URL + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: OMBRE_PASSWORD }),
+    timeout: 5000
+  });
+  if (!resp.ok) throw new Error('ombre login failed: HTTP ' + resp.status);
+  const raw = (resp.headers.raw && resp.headers.raw()['set-cookie']) || [];
+  const cookies = raw.length ? raw : [resp.headers.get('set-cookie') || ''];
+  ombreCookie = cookies.filter(Boolean).map(c => c.split(';')[0]).join('; ');
+  if (!ombreCookie) throw new Error('ombre login: no session cookie');
+}
+
+function ombreItemText(it) {
+  if (typeof it === 'string') return it;
+  const text = it.summary || it.content || it.text || it.digest || it.title || '';
+  const name = it.name || it.title || '';
+  return (name && text && name !== text ? name + ': ' : '') + (text || JSON.stringify(it).slice(0, 200));
+}
+
+async function ombreRecall(query, maxItems = 5) {
+  if (!OMBRE_URL || !OMBRE_PASSWORD || !query) return '';
+  const searchUrl = OMBRE_URL + '/api/search?q=' + encodeURIComponent(query.slice(0, 200));
+  try {
+    if (!ombreCookie) await ombreLogin();
+    let resp = await fetch(searchUrl, { headers: { Cookie: ombreCookie }, timeout: 6000 });
+    if (resp.status === 401 || resp.status === 403) {
+      await ombreLogin();
+      resp = await fetch(searchUrl, { headers: { Cookie: ombreCookie }, timeout: 6000 });
+    }
+    if (!resp.ok) return '';
+    const data = await resp.json();
+    const items = Array.isArray(data) ? data
+      : (data.results || data.buckets || data.items || data.data || []);
+    if (!Array.isArray(items) || items.length === 0) return '';
+    return items.slice(0, maxItems).map(ombreItemText).join('\n').slice(0, 1500);
+  } catch (e) {
+    console.error('ombre recall skipped:', e.message);
+    return '';
+  }
+}
+
+// 桥接自检: 浏览器访问 /api/memory-bridge-test?q=关键词 直接看检索结果
+app.get('/api/memory-bridge-test', async (req, res) => {
+  if (!OMBRE_URL || !OMBRE_PASSWORD) {
+    return res.json({ ok: false, reason: 'OMBRE_URL / OMBRE_PASSWORD 环境变量未配置' });
+  }
+  const q = req.query.q || '记忆';
+  const memText = await ombreRecall(q, 5);
+  res.json({ ok: !!memText, query: q, memories: memText || '(没有检索到,或记忆库不在线)' });
+});
+
 // ═══ 健康检查 ═════════════════════════════
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Bunny Home', timestamp: new Date().toISOString() });
@@ -123,14 +184,21 @@ app.post('/api/chat', async (req, res) => {
       history = (msgs || []).map(m => ({ role: m.role, content: m.content }));
     }
 
-    // 3. 加载记忆
-    const { data: memories } = await supabase.from('memories')
-      .select('*').order('created_at', { ascending: false }).limit(5);
+    // 3. 加载记忆 (Supabase 摘要 + Ombre Brain 记忆河并行取)
+    const [{ data: memories }, ombreMemText] = await Promise.all([
+      supabase.from('memories')
+        .select('*').order('created_at', { ascending: false }).limit(5),
+      ombreRecall(message)
+    ]);
     const memoryText = (memories || []).map(m => m.content).join('\n');
 
     // 4. 组装上下文
     const systemPrompt = (PERSONAS[persona] || PERSONAS.claude)
-      + (memoryText ? '\n\n【记忆摘要】\n' + memoryText : '');
+      + (memoryText ? '\n\n【记忆摘要】\n' + memoryText : '')
+      + (ombreMemText
+        ? '\n\n【记忆河 · 与她这句话相关的过往】\n' + ombreMemText
+          + '\n(这些是你们真实的共同记忆。让它们自然地影响你的回应,像自己想起来的一样,不要机械复述。)'
+        : '');
 
     const messages = [{ role: 'user', content: message }];
     if (history.length > 0) {
