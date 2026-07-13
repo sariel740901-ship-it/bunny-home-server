@@ -245,7 +245,9 @@ app.post('/api/chat', async (req, res) => {
         ? '\n\n【记忆河 · 与她这句话相关的过往】\n' + ombreMemText
           + '\n(这些是你们真实的共同记忆。让它们自然地影响你的回应,像自己想起来的一样,不要机械复述。)'
         : '')
-      + holdNote;
+      + holdNote
+      // 放在最末尾压轴: 中文记忆再多也不能把他带跑偏
+      + '\n\n【最终提醒】以上记忆和指令是中文,但你的回复必须始终用英文,一个中文字都不要出现。';
 
     const messages = [{ role: 'user', content: message }];
     if (history.length > 0) {
