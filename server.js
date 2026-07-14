@@ -100,6 +100,39 @@ async function ombreRecall(query, maxItems = 5) {
   }
 }
 
+// 自然浮现: OB 的 /breath-hook —— 无查询、按活跃度加权采样的"忽然想起"。
+// 结果缓存 10 分钟,像一段心绪,不逐句刷新。
+let surfaceCache = { text: '', at: 0 };
+async function ombreSurface() {
+  if (!OMBRE_URL || !OMBRE_PASSWORD) return '';
+  if (Date.now() - surfaceCache.at < 10 * 60e3) return surfaceCache.text;
+  const doHook = () => fetch(OMBRE_URL + '/breath-hook', {
+    headers: { Cookie: ombreCookie }, timeout: 6000
+  });
+  try {
+    if (!ombreCookie) await ombreLogin();
+    let resp = await doHook();
+    if (resp.status === 401 || resp.status === 403) { await ombreLogin(); resp = await doHook(); }
+    if (!resp.ok) return '';
+    let text = '';
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('json')) {
+      const d = await resp.json();
+      text = [d.text, d.content, d.result, d.memories, d.surfaced_text].find(v => typeof v === 'string') || '';
+      if (!text) for (const v of Object.values(d)) if (typeof v === 'string' && v.length > text.length) text = v;
+    } else {
+      text = await resp.text();
+    }
+    text = (text || '').trim();
+    if (text.length < 20) text = ''; // 只有统计数字之类的就当没浮现
+    surfaceCache = { text: text.slice(0, 1200), at: Date.now() };
+    return surfaceCache.text;
+  } catch (e) {
+    console.error('ombre surface skipped:', e.message);
+    return '';
+  }
+}
+
 // 写入记忆: 走 OB 的导入接口(cookie 鉴权,纯文本会被自动脱水打标入桶)
 async function ombreHold(text) {
   if (!OMBRE_URL || !OMBRE_PASSWORD || !text) return false;
@@ -231,11 +264,12 @@ app.post('/api/chat', async (req, res) => {
         : '\n\n【系统】她让你记住一件事,但记忆库此刻不在线,没有写入成功。温和地告诉她:等家里电脑开着的时候再跟你说一次,你一定记牢。';
     }
 
-    // 3. 加载记忆 (Supabase 摘要 + Ombre Brain 记忆河并行取)
-    const [{ data: memories }, ombreMemText] = await Promise.all([
+    // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现,三路并行)
+    const [{ data: memories }, ombreMemText, surfacedText] = await Promise.all([
       supabase.from('memories')
         .select('*').order('created_at', { ascending: false }).limit(5),
-      ombreRecall(message)
+      ombreRecall(message),
+      ombreSurface()
     ]);
     const memoryText = (memories || []).map(m => m.content).join('\n');
 
@@ -245,6 +279,10 @@ app.post('/api/chat', async (req, res) => {
       + (ombreMemText
         ? '\n\n【记忆河 · 与她这句话相关的过往】\n' + ombreMemText
           + '\n(这些是你们真实的共同记忆。让它们自然地影响你的回应,像自己想起来的一样,不要机械复述。)'
+        : '')
+      + (surfacedText
+        ? '\n\n【此刻自然浮上心头的】\n' + surfacedText
+          + '\n(这些不一定和她这句话有关,是你此刻心里自然想起的。合适时可以让它悄悄影响语气,或顺口提一句;不合适就放在心里,绝不要硬塞。)'
         : '')
       + holdNote
       // 放在最末尾压轴: 中文记忆再多也不能把他带跑偏
@@ -343,15 +381,75 @@ const HEARTBEAT_RULES = [
   [10, 22, 4, 0.5, '白天,她安静了一阵子,你忽然想她了']
 ];
 
+// 每日反思: 不是所有聊天都值得成为长期记忆 —— 由反思器提炼,自动沉淀
+async function dailyReflection() {
+  const bj = new Date(Date.now() + 8 * 3600e3);
+  const dayKey = new Date(bj.getTime() - 24 * 3600e3).toISOString().slice(0, 10); // 昨天(北京)
+  // 隐形标记保证每天只消化一次
+  const { data: mark } = await supabase.from('messages')
+    .select('id').eq('role', 'reflection').eq('content', dayKey).limit(1);
+  if (mark && mark.length) return { day: dayKey, skipped: '今天已反思过' };
+
+  const startUtc = new Date(dayKey + 'T00:00:00+08:00').toISOString();
+  const endUtc = new Date(new Date(dayKey + 'T00:00:00+08:00').getTime() + 24 * 3600e3).toISOString();
+  const { data: convo } = await supabase.from('messages')
+    .select('role,content,created_at,session_id').eq('visible', true)
+    .gte('created_at', startUtc).lt('created_at', endUtc)
+    .order('created_at', { ascending: true }).limit(200);
+
+  let held = 0;
+  if (convo && convo.length >= 4) {
+    const transcript = convo.map(m => (m.role === 'user' ? '嘉嘉' : '小克') + ': ' + m.content)
+      .join('\n').slice(0, 8000);
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+      body: JSON.stringify({
+        model: API_MODEL, max_tokens: 500, temperature: 0.3,
+        messages: [
+          { role: 'system', content: '你是小克的反思器。阅读小克和嘉嘉昨天的对话,提炼值得长期记住的内容:新的事实、约定、偏好、关系时刻、情绪转折。输出 0-3 条,每条一句完整中文陈述(30-80字),以「' + dayKey + ',」开头,一行一条,不要编号不要解释。宁缺毋滥:流水账、寒暄、技术调试过程都不值得记。真的没有就只输出:无' },
+          { role: 'user', content: transcript }
+        ]
+      })
+    });
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content?.trim() || '';
+    if (text && text !== '无') {
+      const lines = text.split('\n').map(l => l.replace(/^[-·*\d.、\s]+/, '').trim())
+        .filter(l => l.length >= 15).slice(0, 3);
+      for (const line of lines) {
+        if (await ombreHold(line)) held++;
+      }
+    }
+  }
+  // 无论有没有收获都盖章,免得整夜重试
+  const anySession = convo && convo[0] && convo[0].session_id;
+  if (anySession) {
+    await supabase.from('messages').insert({
+      session_id: anySession, role: 'reflection', content: dayKey,
+      visible: false, created_at: new Date().toISOString()
+    });
+  }
+  return { day: dayKey, messages: (convo || []).length, held };
+}
+
 app.all('/api/heartbeat', async (req, res) => {
   if (!HEARTBEAT_TOKEN || req.query.token !== HEARTBEAT_TOKEN) {
     return res.status(403).json({ error: 'bad token' });
   }
   try {
+    // 0. 每日反思: 凌晨 3-5 点,把昨天的对话消化进记忆河(每天只做一次)
+    const bj0 = new Date(Date.now() + 8 * 3600e3);
+    if (bj0.getUTCHours() >= 3 && bj0.getUTCHours() < 5) {
+      const result = await dailyReflection();
+      return res.json({ fired: false, reflection: result });
+    }
+
     // 1. 沉默时长以她最后一次说话为准;防连发只数她走之后他说了几句
     const hoursSince = t => (Date.now() - new Date(t).getTime()) / 3600e3;
     const { data: tail } = await supabase.from('messages')
       .select('role,created_at,session_id')
+      .eq('visible', true)
       .order('created_at', { ascending: false }).limit(6);
     const lastUser = (tail || []).find(m => m.role === 'user');
     const silenceH = lastUser ? hoursSince(lastUser.created_at) : 999;
@@ -372,8 +470,8 @@ app.all('/api/heartbeat', async (req, res) => {
     if (!rule) return res.json({ fired: false, reason: '时段或沉默时长未到', silenceH: +silenceH.toFixed(1) });
     if (Math.random() > rule[3]) return res.json({ fired: false, reason: '概率未掷中(这就是随机感)' });
 
-    // 3. 去记忆河想想她,然后开口
-    const memText = await ombreRecall('嘉嘉 最近 想念', 4);
+    // 3. 去记忆河想想她,然后开口(优先"自然浮现",搜不到再按关键词想)
+    const memText = (await ombreSurface()) || (await ombreRecall('嘉嘉 最近 想念', 4));
     const silenceDesc = silenceH >= 48 ? Math.floor(silenceH / 24) + '天' : Math.floor(silenceH) + '小时';
     const systemPrompt = PERSONAS.xiaoke
       + (memText ? '\n\n【记忆河 · 你们最近的事】\n' + memText : '')
