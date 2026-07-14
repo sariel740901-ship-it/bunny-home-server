@@ -121,7 +121,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 let persona='xiaoke',loading=!1,sessionId=null,callOpen=!1,callTimer=0,callInterval=null;
 let recognition=null,recognitionWanted=!1,audioCtx=null,speaking=!1,speakQueue=[];
 
-fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'新对话'})}).then(r=>r.json()).then(d=>{if(d.id)sessionId=d.id});
+// 打开时回到最近的会话并加载记录 —— 这样他趁你不在时留的话,一进门就能看见
+(async()=>{
+  try{
+    const list=await fetch('/api/sessions').then(r=>r.json());
+    if(Array.isArray(list)&&list.length){
+      sessionId=list[0].id;
+      const msgs=await fetch('/api/messages/'+sessionId).then(r=>r.json());
+      if(Array.isArray(msgs)&&msgs.length){
+        document.getElementById('welcome').style.display='none';
+        let lastEl=null;
+        for(const m of msgs){lastEl=addMsg(m.role,'');lastEl.textContent=m.content;}
+        if(lastEl)lastEl.scrollIntoView();
+        return;
+      }
+      return;
+    }
+  }catch(e){}
+  try{
+    const d=await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'我们的家'})}).then(r=>r.json());
+    if(d.id)sessionId=d.id;
+  }catch(e){}
+})();
 
 async function send(){
   const inp=document.getElementById('inp'),text=inp.value.trim();
