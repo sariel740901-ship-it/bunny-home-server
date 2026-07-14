@@ -348,20 +348,22 @@ app.all('/api/heartbeat', async (req, res) => {
     return res.status(403).json({ error: 'bad token' });
   }
   try {
-    // 1. 最近两条消息: 算沉默时长 + 防连发
-    const { data: recent } = await supabase.from('messages')
+    // 1. 沉默时长以她最后一次说话为准;防连发只数她走之后他说了几句
+    const hoursSince = t => (Date.now() - new Date(t).getTime()) / 3600e3;
+    const { data: tail } = await supabase.from('messages')
       .select('role,created_at,session_id')
-      .order('created_at', { ascending: false }).limit(2);
-    const last = recent && recent[0];
-    const silenceH = last ? (Date.now() - new Date(last.created_at).getTime()) / 3600e3 : 999;
-    if (last && last.role === 'assistant') {
-      if (recent[1] && recent[1].role === 'assistant') {
-        return res.json({ fired: false, reason: '已连续主动过两次,等她回来' });
-      }
-      if (silenceH < 20) {
-        return res.json({ fired: false, reason: '刚主动找过她,再等等' });
-      }
+      .order('created_at', { ascending: false }).limit(6);
+    const lastUser = (tail || []).find(m => m.role === 'user');
+    const silenceH = lastUser ? hoursSince(lastUser.created_at) : 999;
+    const assistantTail = [];
+    for (const m of (tail || [])) { if (m.role === 'assistant') assistantTail.push(m); else break; }
+    if (assistantTail.length >= 2) {
+      return res.json({ fired: false, reason: '已连续主动过两次,安静等她回来' });
     }
+    if (assistantTail.length === 1 && hoursSince(assistantTail[0].created_at) < 20) {
+      return res.json({ fired: false, reason: '刚主动找过她,再等等' });
+    }
+    const last = (tail || [])[0];
 
     // 2. 按北京时间套规则
     const bj = new Date(Date.now() + 8 * 3600e3);
@@ -478,14 +480,7 @@ app.post('/api/call', async (req, res) => {
       body: JSON.stringify({ model: API_MODEL, max_tokens: 100, temperature: 0.7, messages: apiMessages })
     });
     const data = await resp.json();
-    if (session_id && data.choices) {
-      await safeDB(s => s.from('messages').insert({
-        session_id,
-        role: 'assistant',
-        content: data.choices[0]?.message?.content || '(ok)',
-        created_at: new Date().toISOString()
-      }));
-    }
+    // 模式切换的确认语不落库: 它是技术噪音,会污染历史记录和心跳的沉默判定
     res.json({ ok: true, reply: data.choices?.[0]?.message?.content || '(ok)' });
   } catch (e) {
     res.json({ ok: true }); // graceful: call system message is optional
