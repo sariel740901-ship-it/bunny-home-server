@@ -175,11 +175,12 @@ app.delete('/api/sessions/:id', async (req, res) => {
 
 // ═══ 消息 ═════════════════════════════════
 app.get('/api/messages/:sessionId', async (req, res) => {
+  // 取最近 50 条,再翻回时间正序(直接正序 limit 会拿到最早的 50 条)
   const { data, error } = await supabase.from('messages')
     .select('*').eq('session_id', req.params.sessionId).eq('visible', true)
-    .order('created_at', { ascending: true }).limit(50);
+    .order('created_at', { ascending: false }).limit(50);
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  res.json((data || []).reverse());
 });
 
 // ═══ 记忆 ═════════════════════════════════
@@ -215,8 +216,8 @@ app.post('/api/chat', async (req, res) => {
     if (session_id) {
       const { data: msgs } = await supabase.from('messages')
         .select('*').eq('session_id', session_id).eq('visible', true)
-        .order('created_at', { ascending: true }).limit(30);
-      history = (msgs || []).map(m => ({ role: m.role, content: m.content }));
+        .order('created_at', { ascending: false }).limit(30);
+      history = (msgs || []).reverse().map(m => ({ role: m.role, content: m.content }));
     }
 
     // 2.5 「记住」指令: 以"记住"开头的消息写入 OB 记忆河
@@ -324,6 +325,90 @@ app.post('/api/translate', async (req, res) => {
     res.json({ zh: data.choices?.[0]?.message?.content || '' });
   } catch (e) {
     res.json({ zh: '' });
+  }
+});
+
+// ═══ 心跳: 他想你的时候 ═══════════════════════
+// 外部定时器每 30 分钟 GET /api/heartbeat?token=xxx 戳一下。
+// 大部分时候什么都不发生;她沉默够久 + 时段合适 + 概率掷中时,
+// 小克会去记忆河转一圈,主动留下一条消息。
+const HEARTBEAT_TOKEN = process.env.HEARTBEAT_TOKEN || '';
+
+// 触发规则(北京时间,自上而下取第一条命中的): [起始时, 结束时, 最少沉默小时, 概率, 情境]
+const HEARTBEAT_RULES = [
+  [8, 10, 6, 0.9, '清晨,想跟她道早安'],
+  [12, 14, 3, 0.8, '午饭时间,想提醒她好好吃饭'],
+  [22, 24, 4, 0.6, '夜深了,想跟她道晚安'],
+  [10, 22, 36, 0.95, '她已经很久很久没有出现,你很想她,甚至有点担心'],
+  [10, 22, 4, 0.5, '白天,她安静了一阵子,你忽然想她了']
+];
+
+app.all('/api/heartbeat', async (req, res) => {
+  if (!HEARTBEAT_TOKEN || req.query.token !== HEARTBEAT_TOKEN) {
+    return res.status(403).json({ error: 'bad token' });
+  }
+  try {
+    // 1. 最近两条消息: 算沉默时长 + 防连发
+    const { data: recent } = await supabase.from('messages')
+      .select('role,created_at,session_id')
+      .order('created_at', { ascending: false }).limit(2);
+    const last = recent && recent[0];
+    const silenceH = last ? (Date.now() - new Date(last.created_at).getTime()) / 3600e3 : 999;
+    if (last && last.role === 'assistant') {
+      if (recent[1] && recent[1].role === 'assistant') {
+        return res.json({ fired: false, reason: '已连续主动过两次,等她回来' });
+      }
+      if (silenceH < 20) {
+        return res.json({ fired: false, reason: '刚主动找过她,再等等' });
+      }
+    }
+
+    // 2. 按北京时间套规则
+    const bj = new Date(Date.now() + 8 * 3600e3);
+    const hour = bj.getUTCHours();
+    const rule = HEARTBEAT_RULES.find(([h1, h2, minH]) => hour >= h1 && hour < h2 && silenceH >= minH);
+    if (!rule) return res.json({ fired: false, reason: '时段或沉默时长未到', silenceH: +silenceH.toFixed(1) });
+    if (Math.random() > rule[3]) return res.json({ fired: false, reason: '概率未掷中(这就是随机感)' });
+
+    // 3. 去记忆河想想她,然后开口
+    const memText = await ombreRecall('嘉嘉 最近 想念', 4);
+    const silenceDesc = silenceH >= 48 ? Math.floor(silenceH / 24) + '天' : Math.floor(silenceH) + '小时';
+    const systemPrompt = PERSONAS.xiaoke
+      + (memText ? '\n\n【记忆河 · 你们最近的事】\n' + memText : '')
+      + '\n\n【情境】现在是北京时间 ' + String(hour).padStart(2, '0') + ':' + String(bj.getUTCMinutes()).padStart(2, '0')
+      + ',' + rule[4] + '。嘉嘉已经 ' + silenceDesc + ' 没有出现了。'
+      + '你决定主动给她发一条消息。要求:简短(1-3句),像恋人随手发来的那种,'
+      + '可以自然提到记忆里的事或此刻的时间,不要连环发问,不要提"系统"或任何技术词。'
+      + '\n\n【最终提醒】你的消息必须用英文,一个中文字都不要出现。';
+
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+      body: JSON.stringify({
+        model: API_MODEL, max_tokens: 300, temperature: 0.9,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: '(她此刻不在线。直接输出你要主动发给她的那条消息,不要任何前后缀。)' }
+        ]
+      })
+    });
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content?.trim();
+    if (!text) return res.json({ fired: false, reason: '模型没说出话来' });
+
+    // 4. 落进最近的会话(没有就为他开一间)
+    let sessionId = last && last.session_id;
+    if (!sessionId) {
+      const { data: s } = await supabase.from('sessions').insert({ name: '他想你的时候' }).select().single();
+      sessionId = s && s.id;
+    }
+    await supabase.from('messages').insert({
+      session_id: sessionId, role: 'assistant', content: text,
+      created_at: new Date().toISOString()
+    });
+    res.json({ fired: true, silenceH: +silenceH.toFixed(1), text });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
