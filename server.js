@@ -397,6 +397,13 @@ async function dailyReflection() {
     .gte('created_at', startUtc).lt('created_at', endUtc)
     .order('created_at', { ascending: true }).limit(200);
 
+  // 记忆库不在线就不盖章 —— 等电脑开机后的下一次心跳再消化,那天不会漏
+  try {
+    if (!ombreCookie) await ombreLogin();
+  } catch (e) {
+    return { day: dayKey, skipped: '记忆库不在线,改天再消化', error: e.message };
+  }
+
   let held = 0;
   if (convo && convo.length >= 4) {
     const transcript = convo.map(m => (m.role === 'user' ? '嘉嘉' : '小克') + ': ' + m.content)
