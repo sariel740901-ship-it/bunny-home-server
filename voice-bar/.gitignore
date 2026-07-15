@@ -1,0 +1,4 @@
+# 密钥和生成的音频不入库
+config.json
+audio/
+node_modules/

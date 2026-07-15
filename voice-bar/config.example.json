@@ -1,0 +1,23 @@
+{
+  "tts_engine": "elevenlabs",
+  "public_base_url": "https://voice.jiakeparents.top",
+  "audio_dir": "",
+  "elevenlabs": {
+    "api_key": "把你的_ElevenLabs_Key_贴这里",
+    "voice_id": "eSdeFmqUZYQE9CY16Olm",
+    "model_id": "eleven_v3",
+    "stability": 0.6,
+    "similarity_boost": 0.8,
+    "speed": 0.9
+  },
+  "style": {
+    "color_primary": "#e898a4",
+    "color_secondary": "#d97f8e",
+    "color_bg": "#2b1f26",
+    "color_bg_end": "#241a20",
+    "sender_name": "小克",
+    "bar_count": 35,
+    "bg_image": "",
+    "custom_css": ""
+  }
+}
