@@ -18,8 +18,64 @@ STATUS = {0: "已关闭", 1: "已打开", 2: "切换中", 3: "已停止", 4: "�
 
 
 async def _get_session():
+    """遍历所有媒体会话,优先挑"正在播放且有歌名"的;网易云的会话常不是系统眼里的"当前会话"。"""
     mgr = await SessionManager.request_async()
-    return mgr.get_current_session()
+    best = None
+    try:
+        for s in list(mgr.get_sessions()):
+            try:
+                props = await s.try_get_media_properties_async()
+                if not (props.title or "").strip():
+                    continue
+                if int(s.get_playback_info().playback_status) == 4:  # 播放中
+                    return s
+                if best is None:
+                    best = s
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return best or mgr.get_current_session()
+
+
+def _netease_window_title():
+    """兜底: 读网易云客户端(cloudmusic.exe)的窗口标题 —— 标题里就写着正在放的歌。"""
+    import ctypes
+    from ctypes import wintypes
+    user32, kernel32, psapi = ctypes.windll.user32, ctypes.windll.kernel32, ctypes.windll.psapi
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def enum_cb(hwnd, _):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        h = kernel32.OpenProcess(0x1000, False, pid.value)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return True
+        try:
+            buf = ctypes.create_unicode_buffer(512)
+            size = wintypes.DWORD(512)
+            if kernel32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+                exe = buf.value.rsplit("\\", 1)[-1].lower()
+                if exe == "cloudmusic.exe":
+                    tlen = user32.GetWindowTextLengthW(hwnd)
+                    if tlen > 0:
+                        tbuf = ctypes.create_unicode_buffer(tlen + 1)
+                        user32.GetWindowTextW(hwnd, tbuf, tlen + 1)
+                        title = tbuf.value.strip()
+                        if title and title != "网易云音乐":
+                            found.append(title)
+        finally:
+            kernel32.CloseHandle(h)
+        return True
+
+    try:
+        user32.EnumWindows(enum_cb, 0)
+    except Exception:
+        pass
+    return found[0] if found else ""
 
 
 def _fmt(td):
@@ -32,6 +88,9 @@ async def now_playing() -> str:
     """查看电脑上正在播放的歌曲:歌名、歌手、专辑、播放进度、用的哪个播放器。想陪嘉嘉听歌、聊她在听什么的时候用这个。"""
     session = await _get_session()
     if session is None:
+        t = _netease_window_title()
+        if t:
+            return "系统没交出播放状态,但从网易云窗口标题看,正在放: " + t
         return "现在没有播放任何媒体。"
     props = await session.try_get_media_properties_async()
     info = session.get_playback_info()
