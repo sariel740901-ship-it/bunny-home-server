@@ -83,5 +83,19 @@ async def previous_track() -> str:
     return "回到上一首了。" if ok else "这个播放器不允许切歌。"
 
 
+@mcp.tool()
+async def play_song(song_id: str) -> str:
+    """在电脑的网易云客户端播放指定歌曲。传网易云歌曲 ID(数字,可通过 DJ 的 play_music 或 get_lyrics 搜到)。嘉嘉说"放某首歌"时:先用 DJ 工具搜到 ID,再调这个真正开始播放。"""
+    import os
+    sid = "".join(ch for ch in str(song_id) if ch.isdigit())
+    if not sid:
+        return "song_id 需要是网易云的数字 ID。"
+    try:
+        os.startfile("orpheus://song/" + sid)
+        return "已唤起网易云客户端播放 (ID: " + sid + ")。若只打开未自动播,再调一次 play_pause 按下播放。"
+    except Exception as e:
+        return "唤起网易云客户端失败: " + str(e) + "(电脑上装了网易云客户端吗?)"
+
+
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")  # 走隧道挂成连接器,全端(含手机)可用
