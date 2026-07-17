@@ -68,3 +68,16 @@ pip install -i https://pypi.tuna.tsinghua.edu.cn/simple mcp winsdk
 - 只在**桌面版**生效(它要够得着你电脑的播放器),手机上不行
 - 配合记忆库:听到喜欢的歌可以让它 `hold` 一条 ——
   "记住这首歌,今天我们一起听的"
+
+---
+
+## 升级说明:已改造为连接器(全端可用,含手机)📱
+
+工具本体不变,但接入方式从"桌面版本地配置"升级为**账号级连接器**:
+
+1. **删掉旧接法**:`claude_desktop_config.json` 里 `mcpServers` 中的 `now-playing` 段删除(保留 ombre-brain 那段),重启桌面版
+2. **启动服务**:双击 `start-ears.bat`(监听 0.0.0.0:8010;建议把快捷方式放进 `shell:startup` 开机自启)
+3. **隧道加路由**:已发布应用程序路由 → 子域 `ears` + 域 `jiakeparents.top` → HTTP → `host.docker.internal:8010`
+4. **挂连接器**:claude.ai → Connectors → Add custom connector → `https://ears.jiakeparents.top/mcp`
+
+从此手机上也能:问"家里电脑在放什么"、说"帮我切下一首/暂停" —— 它汇报和控制的始终是**电脑上**的播放。
