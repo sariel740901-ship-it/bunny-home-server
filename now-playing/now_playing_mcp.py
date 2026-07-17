@@ -12,7 +12,7 @@ from winsdk.windows.media.control import (
     GlobalSystemMediaTransportControlsSessionManager as SessionManager,
 )
 
-mcp = FastMCP("now-playing")
+mcp = FastMCP("now-playing", host="0.0.0.0", port=8010)
 
 STATUS = {0: "已关闭", 1: "已打开", 2: "切换中", 3: "已停止", 4: "播放中", 5: "已暂停"}
 
@@ -84,4 +84,4 @@ async def previous_track() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="streamable-http")  # 走隧道挂成连接器,全端(含手机)可用
