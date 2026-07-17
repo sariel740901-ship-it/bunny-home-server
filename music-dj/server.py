@@ -223,7 +223,7 @@ def handle_jsonrpc(body):
         if name == 'play_music':
             text = play_music(args.get('query', ''), args.get('note'))
         elif name == 'get_lyrics':
-            result = get_lyrics(args.get('query'))
+            text = get_lyrics(args.get('query'))
         elif name == 'create_playlist':
             text = create_playlist(args.get('name', ''), args.get('description', ''), args.get('privacy', 0))
         elif name == 'add_to_playlist':
