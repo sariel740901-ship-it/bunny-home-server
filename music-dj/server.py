@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import http.server, json, os, urllib.request, urllib.parse, threading, uuid, time
+import re
 from http.server import HTTPServer
 
 NETEASE_COOKIE = os.environ.get("NETEASE_COOKIE", "")
@@ -49,6 +50,32 @@ def play_music(query, note=None):
     name = s.get('name', '').replace(':', '\uff1a')
     artist = ', '.join([a.get('name', '') for a in s.get('artists', [])]).replace(':', '\uff1a')
     return "[music:" + str(song_id) + ":" + name + ":" + artist + ":" + pic_url + "]" + (note or '')
+
+
+def get_lyrics(query):
+    song_id, label = None, str(query)
+    if str(query).isdigit():
+        song_id = str(query)
+    else:
+        url = 'https://music.163.com/api/search/get?s=' + urllib.parse.quote(str(query)) + '&type=1&limit=1'
+        songs = netease_request(url).get('result', {}).get('songs', [])
+        if not songs:
+            return "No song found for '" + str(query) + "'"
+        song_id = str(songs[0].get('id'))
+        artist = ', '.join([a.get('name', '') for a in songs[0].get('artists', [])])
+        label = songs[0].get('name', '') + ' - ' + artist
+    resp = netease_request('https://music.163.com/api/song/lyric?id=' + song_id + '&lv=1&tv=-1')
+    raw = (resp.get('lrc') or {}).get('lyric', '')
+    if not raw:
+        return "No lyrics available for " + label + " (可能是纯音乐)"
+    strip_ts = lambda t: '\n'.join(
+        line for line in (re.sub(r'\[[^\]]*\]', '', ln).strip() for ln in t.split('\n')) if line
+    )
+    out = label + '\n\n' + strip_ts(raw)
+    trans = (resp.get('tlyric') or {}).get('lyric', '')
+    if trans and trans.strip():
+        out += '\n\n--- 翻译 ---\n' + strip_ts(trans)
+    return out[:4000]
 
 def create_playlist(name, description='', privacy=0):
     csrf = get_csrf()
@@ -172,6 +199,7 @@ def daily_recommend():
 
 TOOLS = [
     {"name": "play_music", "description": "Search and play a song from NetEase Cloud Music.", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "Search query"}, "note": {"type": "string", "description": "Optional note"}}, "required": ["query"]}},
+    {"name": "get_lyrics", "description": "Get lyrics of a song by name or NetEase song ID (includes translation if available).", "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "Song name (optionally with artist) or NetEase song ID"}}, "required": ["query"]}},
     {"name": "create_playlist", "description": "Create a new playlist in NetEase account.", "inputSchema": {"type": "object", "properties": {"name": {"type": "string", "description": "Playlist name"}, "description": {"type": "string", "description": "Description"}, "privacy": {"type": "integer", "description": "0=public, 10=private"}}, "required": ["name"]}},
     {"name": "add_to_playlist", "description": "Add song(s) to a playlist.", "inputSchema": {"type": "object", "properties": {"playlist_id": {"type": "integer", "description": "Playlist ID"}, "song_ids": {"type": "string", "description": "Song ID(s), comma-separated"}}, "required": ["playlist_id", "song_ids"]}},
     {"name": "remove_from_playlist", "description": "Remove song(s) from a playlist.", "inputSchema": {"type": "object", "properties": {"playlist_id": {"type": "integer", "description": "Playlist ID"}, "song_ids": {"type": "string", "description": "Song ID(s) to remove"}}, "required": ["playlist_id", "song_ids"]}},
@@ -194,6 +222,8 @@ def handle_jsonrpc(body):
         args = body.get('params', {}).get('arguments', {})
         if name == 'play_music':
             text = play_music(args.get('query', ''), args.get('note'))
+        elif name == 'get_lyrics':
+            result = get_lyrics(args.get('query'))
         elif name == 'create_playlist':
             text = create_playlist(args.get('name', ''), args.get('description', ''), args.get('privacy', 0))
         elif name == 'add_to_playlist':
