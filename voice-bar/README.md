@@ -54,10 +54,19 @@ Windows 防火墙若弹窗询问,点"允许"。
 **7. 挂连接器:** claude.ai → Settings → Connectors → Add custom connector:
 
 ```
-https://voice.jiakeparents.top/mcp
+https://voice.jiakeparents.top/mcp?key=你的暗号
 ```
 
+> `你的暗号` = `config.json` 里 `access_token` 的值(自己编一串长随机字符)。
+> 不设 `access_token` 也能跑,但 `/mcp` 就对全网裸奔 —— 强烈建议设上。
+
 **8. 验收:** 开个新对话说"给我发条语音,说晚上好" —— 一条小克粉的语音条应声而落 🎉
+
+## 门禁 🔒
+
+- `config.json` 里 `access_token` 设了值后,`/mcp` 端点必须带 `?key=暗号` 才放行(改完重启服务)
+- 语音文件 `/voice/audio/…` **不设防**:播放链接要能直接点开;文件名是内容哈希,外人猜不到
+- 换暗号 = 改 `config.json` → 重启 → 到 claude.ai 删掉旧连接器,用新 URL 重新添加
 
 ## 手机端说明
 

@@ -2,6 +2,7 @@
   "tts_engine": "elevenlabs",
   "public_base_url": "https://voice.jiakeparents.top",
   "audio_dir": "",
+  "access_token": "自己编一串长随机字符_连接器URL要带上它",
   "elevenlabs": {
     "api_key": "把你的_ElevenLabs_Key_贴这里",
     "voice_id": "eSdeFmqUZYQE9CY16Olm",
