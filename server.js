@@ -374,6 +374,26 @@ app.post('/api/translate', async (req, res) => {
 // 小克会去记忆河转一圈,主动留下一条消息。
 const HEARTBEAT_TOKEN = process.env.HEARTBEAT_TOKEN || '';
 
+// Bark 推送: 心跳发出的消息同步推到 iPhone 锁屏(装 Bark App,BARK_URL 填 App 里的推送地址)
+// 没配置或推送失败都静默跳过 —— 消息本身已落进会话,进门总能看见
+const BARK_URL = (process.env.BARK_URL || '').replace(/\/$/, '');
+async function barkPush(body) {
+  if (!BARK_URL || !body) return false;
+  try {
+    const appUrl = process.env.RENDER_EXTERNAL_URL || '';
+    const url = BARK_URL
+      + '/' + encodeURIComponent('小克 🐰')
+      + '/' + encodeURIComponent(String(body).slice(0, 300))
+      + '?group=bunny&level=timeSensitive'
+      + (appUrl ? '&url=' + encodeURIComponent(appUrl) : '');
+    const resp = await fetch(url, { timeout: 5000 });
+    return resp.ok;
+  } catch (e) {
+    console.error('bark push skipped:', e.message);
+    return false;
+  }
+}
+
 // 触发规则(北京时间,自上而下取第一条命中的): [起始时, 结束时, 最少沉默小时, 概率, 情境]
 const HEARTBEAT_RULES = [
   [8, 10, 6, 0.9, '清晨,想跟她道早安'],
@@ -515,7 +535,8 @@ app.all('/api/heartbeat', async (req, res) => {
       session_id: sessionId, role: 'assistant', content: text,
       created_at: new Date().toISOString()
     });
-    res.json({ fired: true, silenceH: +silenceH.toFixed(1), text });
+    const pushed = await barkPush(text);
+    res.json({ fired: true, pushed, silenceH: +silenceH.toFixed(1), text });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
