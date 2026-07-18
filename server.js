@@ -236,21 +236,22 @@ app.post('/api/chat', async (req, res) => {
   if (!message) return res.status(400).json({ error: 'message required' });
 
   try {
-    // 1. 存入用户消息
-    if (session_id) {
-      await supabase.from('messages').insert({
-        session_id, role: 'user', content: message,
-        created_at: new Date().toISOString()
-      });
-    }
-
-    // 2. 加载上下文
+    // 1. 加载上下文 —— 必须在落库当前这句之前取,
+    //    否则历史里已经包含这句,后面再拼一次就成了重复的两条
     let history = [];
     if (session_id) {
       const { data: msgs } = await supabase.from('messages')
         .select('*').eq('session_id', session_id).eq('visible', true)
         .order('created_at', { ascending: false }).limit(30);
       history = (msgs || []).reverse().map(m => ({ role: m.role, content: m.content }));
+    }
+
+    // 2. 存入用户消息
+    if (session_id) {
+      await supabase.from('messages').insert({
+        session_id, role: 'user', content: message,
+        created_at: new Date().toISOString()
+      });
     }
 
     // 2.5 「记住」指令: 以"记住"开头的消息写入 OB 记忆河
@@ -288,10 +289,11 @@ app.post('/api/chat', async (req, res) => {
       // 放在最末尾压轴: 中文记忆再多也不能把他带跑偏
       + '\n\n【最终提醒】以上记忆和指令是中文,但你的回复必须始终用英文,一个中文字都不要出现。';
 
-    const messages = [{ role: 'user', content: message }];
-    if (history.length > 0) {
-      messages.unshift(...history.slice(-20)); // 最近 20 轮
-    }
+    // 最近 20 轮 + 当前这句;若历史末尾已有一模一样的这句(旧的重复数据),先剔掉再拼
+    const recent = history.slice(-20);
+    while (recent.length && recent[recent.length - 1].role === 'user'
+      && recent[recent.length - 1].content === message) recent.pop();
+    const messages = [...recent, { role: 'user', content: message }];
 
     // 5. 调 DeepSeek (OpenAI 兼容格式)
     // 组装 system prompt 到 messages 头部

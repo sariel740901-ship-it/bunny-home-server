@@ -282,8 +282,13 @@ function stopSTT(){
   document.getElementById('callTranscript').textContent='';
 }
 
+let lastVoiceText='',lastVoiceAt=0;
 async function sendVoiceText(text){
   if(!text||text.length<2)return;
+  // 识别器(尤其 iOS)偶尔把同一句 final 报两遍 —— 短时间内一模一样的话只发一次
+  const now=Date.now();
+  if(text===lastVoiceText&&now-lastVoiceAt<6000)return;
+  lastVoiceText=text;lastVoiceAt=now;
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text,persona})});
     const d=await r.json();
