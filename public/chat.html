@@ -56,6 +56,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 .typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
 @keyframes bounce{0%,60%,100%{transform:none;opacity:.35}30%{transform:translateY(-4px);opacity:1}}
 
+/* Stickers */
+.msg img.sticker{display:block;max-width:150px;max-height:150px;border-radius:10px;margin:4px 0}
+.msg.sticker-only{background:transparent !important;border:none;box-shadow:none;padding:2px}
+.stk-btn{width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:var(--card);font-size:18px;cursor:pointer;flex-shrink:0;transition:transform .15s;box-shadow:var(--shadow)}
+.stk-btn:active{transform:scale(.92)}
+.stk-panel{display:none;position:absolute;left:10px;right:10px;bottom:calc(74px + env(safe-area-inset-bottom));max-height:272px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:10px;z-index:10;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.stk-panel.show{display:grid}
+.stk-panel img{width:100%;aspect-ratio:1;object-fit:contain;cursor:pointer;border-radius:8px;transition:transform .12s}
+.stk-panel img:active{transform:scale(.9)}
+
 /* Call overlay — 暖夜色 */
 .call-overlay{display:none;position:fixed;inset:0;background:linear-gradient(170deg,#2b1f26 0%,#3d2732 45%,#241a20 100%);z-index:50;flex-direction:column;align-items:center;justify-content:center;gap:18px;overflow:hidden}
 .call-overlay.show{display:flex}
@@ -97,7 +107,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
   <main class="msgs" id="msgs">
     <div class="empty" id="welcome">嘉嘉在等你。</div>
   </main>
+  <div class="stk-panel" id="stkpanel"></div>
   <footer class="input">
+    <button class="stk-btn" id="stkbtn" onclick="toggleStickers()" title="表情包">😊</button>
     <textarea id="inp" placeholder="说点什么…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
     <button class="xiao" id="sendbtn" onclick="send()">发送</button>
   </footer>
@@ -121,8 +133,39 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 let persona='xiaoke',loading=!1,sessionId=null,callOpen=!1,callTimer=0,callInterval=null;
 let recognition=null,recognitionWanted=!1,audioCtx=null,speaking=!1,speakQueue=[];
 
+// ═══ 表情包 ═══════════════════════════════════════════
+let stickerMap={};
+function renderContent(el,content){
+  content=String(content==null?'':content);
+  el.textContent='';
+  el.classList.toggle('sticker-only',/^\s*\[sticker:[^\]]+\]\s*$/.test(content));
+  const parts=content.split(/\[sticker:([^\]]+)\]/);
+  for(let i=0;i<parts.length;i++){
+    if(i%2){ // 奇数段是表情名
+      const name=parts[i].trim(),url=stickerMap[name];
+      if(url){const img=document.createElement('img');img.src=url;img.alt=name;img.className='sticker';el.appendChild(img);}
+      else el.appendChild(document.createTextNode('['+parts[i]+']'));
+    }else if(parts[i])el.appendChild(document.createTextNode(parts[i]));
+  }
+}
+function buildStickerPanel(){
+  const p=document.getElementById('stkpanel');p.innerHTML='';
+  for(const name in stickerMap){
+    const img=document.createElement('img');
+    img.src=stickerMap[name];img.title=name;img.loading='lazy';
+    img.onclick=()=>sendSticker(name);
+    p.appendChild(img);
+  }
+}
+function toggleStickers(){document.getElementById('stkpanel').classList.toggle('show')}
+
 // 打开时回到最近的会话并加载记录 —— 这样他趁你不在时留的话,一进门就能看见
 (async()=>{
+  try{
+    const l=await fetch('/api/stickers').then(r=>r.json());
+    if(Array.isArray(l))for(const s of l)stickerMap[s.name]=s.url;
+    buildStickerPanel();
+  }catch(e){}
   try{
     const list=await fetch('/api/sessions').then(r=>r.json());
     if(Array.isArray(list)&&list.length){
@@ -131,7 +174,7 @@ let recognition=null,recognitionWanted=!1,audioCtx=null,speaking=!1,speakQueue=[
       if(Array.isArray(msgs)&&msgs.length){
         document.getElementById('welcome').style.display='none';
         let lastEl=null;
-        for(const m of msgs){lastEl=addMsg(m.role,'');lastEl.textContent=m.content;}
+        for(const m of msgs){lastEl=addMsg(m.role,'');renderContent(lastEl,m.content);}
         if(lastEl)lastEl.scrollIntoView();
         return;
       }
@@ -146,14 +189,25 @@ let recognition=null,recognitionWanted=!1,audioCtx=null,speaking=!1,speakQueue=[
 
 async function send(){
   const inp=document.getElementById('inp'),text=inp.value.trim();
-  if(!text||loading)return;inp.value='';loading=!0;
+  if(!text||loading)return;inp.value='';
+  await postMessage(text);
+}
+
+async function sendSticker(name){
+  if(loading)return;
+  document.getElementById('stkpanel').classList.remove('show');
+  await postMessage('[sticker:'+name+']');
+}
+
+async function postMessage(text){
+  if(loading)return;loading=!0;
   document.getElementById('welcome').style.display='none';
-  addMsg('user',text);
+  const u=addMsg('user','');renderContent(u,text);
   const div=addMsg('assistant','<span class="typing"><i></i><i></i><i></i></span>');
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text,persona})});
     const d=await r.json();
-    div.textContent=d.reply||'(空)';
+    renderContent(div,d.reply||'(空)');
     if(callOpen)speakAsync(d.reply);
   }catch(e){div.textContent='连接中断——稍等再试';}
   loading=!1;
@@ -346,6 +400,9 @@ function showZhSubtitle(text){
 }
 
 async function speakAsync(text){
+  // 表情包暗号不朗读、不进字幕
+  text=String(text||'').replace(/\[sticker:[^\]]+\]/g,' ').trim();
+  if(!text)return;
   speakQueue=splitForTTS(text);
   showZhSubtitle(text);
   if(speaking)return;

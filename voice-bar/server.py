@@ -324,6 +324,51 @@ async def serve_audio(request):
                         headers={"Cache-Control": "public, max-age=31536000"})
 
 
+# ── 表情包 (和 bunny 共用 public/stickers/,文件名即含义) ──
+from mcp.server.fastmcp import Image as MCPImage
+
+STICKER_DIR = BASE_DIR.parent / "public" / "stickers"
+
+def _sticker_files() -> dict:
+    if not STICKER_DIR.is_dir():
+        return {}
+    out = {}
+    for p in sorted(STICKER_DIR.iterdir()):
+        if not p.name.startswith(".") and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+            name = p.stem.strip()
+            if name:
+                out[name] = p
+    return out
+
+
+@mcp.tool(
+    name="list_stickers",
+    description="看看表情包库里有哪些可用的表情(文件名即含义)。想发表情前先调这个。",
+)
+async def list_stickers() -> str:
+    names = list(_sticker_files())
+    if not names:
+        return "表情包文件夹是空的(电脑上 git pull 一下仓库试试)。"
+    return f"可用表情 {len(names)} 张: " + "、".join(names)
+
+
+@mcp.tool(
+    name="send_sticker",
+    description="发送一张表情包,会作为图片直接显示在聊天里。name 传表情名(中文,不带扩展名),不确定有哪些就先 list_stickers。",
+)
+async def send_sticker(name: str) -> MCPImage:
+    files = _sticker_files()
+    key = str(name).strip()
+    if key not in files:
+        cand = [n for n in files if key in n or n in key]
+        if len(cand) == 1:
+            key = cand[0]
+        else:
+            hint = "像这些吗: " + "、".join(cand[:5]) if cand else "用 list_stickers 看看现有的。"
+            raise Exception(f"没有叫「{name}」的表情。{hint}")
+    return MCPImage(path=str(files[key]))
+
+
 # ── MCP Tools ──────────────────────────────────────────────
 
 @mcp.tool(

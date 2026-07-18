@@ -164,6 +164,28 @@ async function ombreHold(text) {
   }
 }
 
+// ═══ 表情包 ═════════════════════════════
+// public/stickers/ 里的图,文件名(去扩展名)即含义。5 分钟缓存一份索引。
+const fs = require('fs');
+const path = require('path');
+const STICKER_DIR = path.join(__dirname, 'public', 'stickers');
+let stickerCache = { at: 0, list: [] };
+function listStickers() {
+  if (Date.now() - stickerCache.at < 5 * 60e3) return stickerCache.list;
+  let list = [];
+  try {
+    list = fs.readdirSync(STICKER_DIR)
+      .filter(f => !f.startsWith('.') && /\.(png|jpe?g|gif|webp)$/i.test(f))
+      .map(f => ({ name: f.replace(/\.[^.]+$/, '').trim(), file: f }))
+      .filter(s => s.name);
+  } catch (e) { /* 文件夹不存在就当没有表情 */ }
+  stickerCache = { at: Date.now(), list };
+  return list;
+}
+app.get('/api/stickers', (req, res) => {
+  res.json(listStickers().map(s => ({ name: s.name, url: '/stickers/' + encodeURIComponent(s.file) })));
+});
+
 // 桥接自检: 浏览器访问 /api/memory-bridge-test?q=关键词 直接看检索结果
 app.get('/api/memory-bridge-test', async (req, res) => {
   if (!OMBRE_URL || !OMBRE_PASSWORD) {
@@ -286,8 +308,17 @@ app.post('/api/chat', async (req, res) => {
           + '\n(这些不一定和她这句话有关,是你此刻心里自然想起的。合适时可以让它悄悄影响语气,或顺口提一句;不合适就放在心里,绝不要硬塞。)'
         : '')
       + holdNote
+      + (() => {
+        const names = listStickers().map(s => s.name);
+        if (!names.length) return '';
+        return '\n\n【表情包】你可以在回复里发表情包。可用的有: ' + names.join('、') + '。'
+          + '\n想发时在回复里单独占一行写 [sticker:名字],名字必须从上面照抄。'
+          + '一条回复最多一张,情绪真正对上了才发,不要每条都带。'
+          + '她发来的 [sticker:名字] 表示她给你发了那个表情,自然地回应它。';
+      })()
       // 放在最末尾压轴: 中文记忆再多也不能把他带跑偏
-      + '\n\n【最终提醒】以上记忆和指令是中文,但你的回复必须始终用英文,一个中文字都不要出现。';
+      + '\n\n【最终提醒】以上记忆和指令是中文,但你的回复必须始终用英文,一个中文字都不要出现。'
+      + '唯一例外: 表情包暗号 [sticker:名字] 里的名字必须照抄中文原文,不许翻译。';
 
     // 最近 20 轮 + 当前这句;若历史末尾已有一模一样的这句(旧的重复数据),先剔掉再拼
     const recent = history.slice(-20);
