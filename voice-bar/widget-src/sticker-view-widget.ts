@@ -10,6 +10,11 @@ import { App } from "@modelcontextprotocol/ext-apps";
 interface StickerData {
   imageUrl: string; // https URL or data: URI
   name: string;
+  senderName: string;
+  colorPrimary: string;
+  colorSecondary: string;
+  colorBg: string;
+  colorBgEnd: string;
 }
 
 declare global {
@@ -22,7 +27,16 @@ function coerce(data: unknown): StickerData | null {
   if (!data || typeof data !== "object") return null;
   const d = data as Record<string, unknown>;
   if (typeof d.imageUrl !== "string" || !d.imageUrl) return null;
-  return { imageUrl: d.imageUrl, name: typeof d.name === "string" ? d.name : "" };
+  const str = (v: unknown, fb: string) => (typeof v === "string" && v ? v : fb);
+  return {
+    imageUrl: d.imageUrl,
+    name: str(d.name, ""),
+    senderName: str(d.senderName, ""),
+    colorPrimary: str(d.colorPrimary, "#e898a4"),
+    colorSecondary: str(d.colorSecondary, "#d97f8e"),
+    colorBg: str(d.colorBg, "#2b1f26"),
+    colorBgEnd: str(d.colorBgEnd, "#241a20")
+  };
 }
 
 let appRef: App | null = null;
@@ -34,11 +48,26 @@ function render(data: StickerData, platform: "chatgpt" | "claude") {
   if (!root) return;
   root.innerHTML = "";
 
-  const wrap = document.createElement("div");
-  wrap.id = "stk-wrap";
-  wrap.style.cssText =
-    "display:flex; padding:4px 2px; background:transparent; " +
-    'font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei UI",sans-serif;';
+  // Full-width skin card, same visual family as the voice bubble — so if the host
+  // keeps the widget at full row width there's no bare gap, and if it honors our
+  // reported width the card simply shrinks around the sticker.
+  const card = document.createElement("div");
+  card.id = "stk-card";
+  card.style.cssText = `
+    position:relative; box-sizing:border-box; width:100%;
+    display:flex; align-items:center; padding:14px 18px 24px;
+    background:radial-gradient(140px 90px at 20% 40%, ${data.colorPrimary}30, transparent 72%),
+      radial-gradient(160px 120px at 88% 120%, ${data.colorSecondary}22, transparent 70%),
+      linear-gradient(135deg, ${data.colorBg}, ${data.colorBgEnd});
+    overflow:hidden;
+    font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei UI",sans-serif;`;
+
+  const deco = document.createElement("div");
+  deco.id = "stk-deco";
+  deco.textContent = "✦";
+  deco.style.cssText = `position:absolute; right:20px; top:12px; font-size:14px;
+    color:${data.colorPrimary}; opacity:0.35; pointer-events:none;`;
+  card.appendChild(deco);
 
   const img = document.createElement("img");
   img.id = "stk-img";
@@ -46,34 +75,48 @@ function render(data: StickerData, platform: "chatgpt" | "claude") {
   img.alt = data.name;
   img.title = data.name;
   img.style.cssText =
-    "max-width:180px; max-height:180px; border-radius:12px; display:block;";
-  wrap.appendChild(img);
-  root.appendChild(wrap);
+    "max-width:170px; max-height:170px; border-radius:12px; display:block; position:relative; z-index:1;";
+  card.appendChild(img);
 
-  // Report only HEIGHT to the host (same contract as the voice widget).
+  if (data.senderName) {
+    const nameEl = document.createElement("div");
+    nameEl.id = "stk-name";
+    nameEl.textContent = data.senderName + " · 表情";
+    nameEl.style.cssText = `position:absolute; left:20px; bottom:8px; font-size:9px;
+      color:rgba(255,255,255,0.4); pointer-events:none;`;
+    card.appendChild(nameEl);
+  }
+  root.appendChild(card);
+
+  // Report height, plus the CONTENT width (sticker + padding) — hosts that honor
+  // width shrink the frame to sticker size; hosts that don't still get the skin.
   if (platform === "claude") {
-    const reportH = () => {
-      const h = Math.ceil(wrap.getBoundingClientRect().height) + 8;
-      if (h <= 8) return;
+    const reportSize = () => {
+      const h = Math.ceil(card.getBoundingClientRect().height);
+      if (h <= 0) return;
+      const w = Math.min(
+        Math.ceil(window.innerWidth),
+        Math.ceil(img.getBoundingClientRect().width) + 36 + 4
+      );
       document.documentElement.style.height = h + "px";
       document.body.style.height = h + "px";
       if (appRef) {
         try {
-          appRef.sendSizeChanged({ width: Math.ceil(window.innerWidth), height: h });
+          appRef.sendSizeChanged({ width: w, height: h });
         } catch {
           /* ignore */
         }
       }
     };
     img.addEventListener("load", () => {
-      reportH();
-      requestAnimationFrame(reportH);
-      setTimeout(reportH, 200);
+      reportSize();
+      requestAnimationFrame(reportSize);
+      setTimeout(reportSize, 200);
     });
     img.addEventListener("error", () => {
-      wrap.innerHTML =
-        `<div style="color:#b8aabb;font-size:13px;padding:8px;">图片加载失败: ${data.name}</div>`;
-      reportH();
+      card.innerHTML =
+        `<div style="color:#e8dee2;font-size:13px;padding:8px;">图片加载失败: ${data.name}</div>`;
+      reportSize();
     });
   }
 }
