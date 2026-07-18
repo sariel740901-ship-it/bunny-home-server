@@ -55,6 +55,10 @@ DEFAULT_CONFIG = {
     # (short URL, CDN-cacheable). If empty, audio is inlined as a data: URI (works with no domain).
     "public_base_url": "",
     "audio_dir": "",  # 留空 = 服务目录下的 audio/ 文件夹
+    # 门禁: 设置后,/mcp 端点必须带对暗号才放行(连接器 URL 写成 …/mcp?key=暗号)。
+    # /voice/audio/ 下的音频文件不设防 —— 播放链接要能直接点开,文件名是随机哈希猜不到。
+    # 留空 = 不设防(和从前一样)。
+    "access_token": "",
     "elevenlabs": {
         "api_key": "",
         "voice_id": "",
@@ -276,6 +280,35 @@ def _audio_url(audio: bytes, mime: str, text: str, cfg: dict) -> str:
     return f"{base}/voice/audio/{name}"
 
 
+# ── 门禁 (pure-ASGI middleware, 不碰流式响应) ─────────────
+# 只拦 /mcp*;暗号从 ?key= 或 Authorization: Bearer 里取。
+# 回 403 而不是 401 —— 401 会诱导 claude.ai 走 OAuth 探测,报"sign-in service"那种误导性错误。
+import secrets as _secrets
+from urllib.parse import parse_qs as _parse_qs
+
+class TokenGate:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http":
+            token = (load_config().get("access_token") or "").strip()
+            if token and scope.get("path", "").startswith("/mcp"):
+                qs = _parse_qs(scope.get("query_string", b"").decode("utf-8", "ignore"))
+                supplied = (qs.get("key") or [""])[0]
+                if not supplied:
+                    headers = dict(scope.get("headers") or [])
+                    auth = headers.get(b"authorization", b"").decode("utf-8", "ignore")
+                    if auth.lower().startswith("bearer "):
+                        supplied = auth[7:]
+                if not _secrets.compare_digest(supplied, token):
+                    await send({"type": "http.response.start", "status": 403,
+                                "headers": [(b"content-type", b"text/plain; charset=utf-8")]})
+                    await send({"type": "http.response.body", "body": b"forbidden"})
+                    return
+        await self.app(scope, receive, send)
+
+
 # ── Audio serving (built-in, no nginx needed) ────────────
 from starlette.responses import FileResponse, Response as StarletteResponse
 
@@ -349,6 +382,7 @@ async def voice_config(
             safe[eng]["api_key"] = "***已配置***"
         elif eng in safe:
             safe[eng]["api_key"] = "未配置"
+    safe["access_token"] = "***已开启***" if safe.get("access_token") else "未设置"
     return json.dumps(safe, indent=2, ensure_ascii=False)
 
 
@@ -363,6 +397,7 @@ async def handle_get_config(request):
     for eng in ("elevenlabs", "minimax"):
         if safe.get(eng, {}).get("api_key"):
             safe[eng]["api_key"] = ""
+    safe["access_token"] = ""
     return web.json_response(safe)
 
 async def handle_post_config(request):
@@ -376,6 +411,8 @@ async def handle_post_config(request):
                 for secret in ("api_key", "group_id"):
                     if secret in data[eng] and not data[eng][secret]:
                         data[eng].pop(secret)
+        if "access_token" in data and not data["access_token"]:
+            data.pop("access_token")  # 空 = 不改动,同 api_key 的规则
         for k, v in data.items():
             if isinstance(v, dict) and k in cur and isinstance(cur[k], dict):
                 cur[k] = {**cur[k], **v}
@@ -424,5 +461,13 @@ if __name__ == "__main__":
         loop.run_forever()
 
     threading.Thread(target=run_customize, daemon=True).start()
+    if (load_config().get("access_token") or "").strip():
+        print("✓ 门禁已开启: /mcp 需要 ?key=暗号")
+    else:
+        print("! 门禁未设置 (config.json 里 access_token 为空,/mcp 对外裸奔)")
     print("✓ MCP server starting (streamable-http)...")
-    mcp.run(transport="streamable-http")
+    # 等价于 mcp.run(transport="streamable-http"),只是手动起 uvicorn 以便套上门禁中间件
+    import uvicorn
+    asgi_app = mcp.streamable_http_app()
+    asgi_app.add_middleware(TokenGate)
+    uvicorn.run(asgi_app, host=mcp.settings.host, port=mcp.settings.port)
