@@ -197,9 +197,9 @@ def extract_waveform(audio: bytes, n_bars: int) -> list:
 
 # ── Widget shell (mcp-app) ─────────────────────────────────
 
-def widget_html() -> str:
-    if WIDGET_JS_PATH.exists():
-        js = WIDGET_JS_PATH.read_text(encoding="utf-8")
+def widget_html(js_path: Path = WIDGET_JS_PATH) -> str:
+    if js_path.exists():
+        js = js_path.read_text(encoding="utf-8")
     else:
         js = "document.getElementById('root').innerHTML='<div style=\"color:#b8aabb;font-size:13px\">语音组件未构建（npm run build:widget）</div>';"
     return (
@@ -325,9 +325,41 @@ async def serve_audio(request):
 
 
 # ── 表情包 (和 bunny 共用 public/stickers/,文件名即含义) ──
-from mcp.server.fastmcp import Image as MCPImage
+# 图不走工具结果里的 ImageContent(官方客户端只在折叠的调用详情里显示它),
+# 而是走语音条同款 mcp-app widget —— 真正渲染在聊天正文里。
+from urllib.parse import quote as _urlquote
 
 STICKER_DIR = BASE_DIR.parent / "public" / "stickers"
+STICKER_JS_PATH = BASE_DIR / "dist" / "widget" / "sticker-view-widget.global.js"
+STICKER_VIEW_URI = "ui://sticker-view/mcp-app-v1.html"
+STICKER_WIDGET_META = {"openai/outputTemplate": STICKER_VIEW_URI, "ui": {"resourceUri": STICKER_VIEW_URI}}
+
+STICKER_MIMES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".gif": "image/gif", ".webp": "image/webp"}
+
+
+@mcp.resource(STICKER_VIEW_URI, mime_type=VOICE_VIEW_MIME, name="sticker-view", meta=csp_meta(load_config()))
+def sticker_view() -> str:
+    """Inline sticker widget for chat."""
+    return widget_html(STICKER_JS_PATH)
+
+
+@mcp.custom_route("/stickers/{name}", methods=["GET"])
+async def serve_sticker(request):
+    name = request.path_params.get("name", "")
+    if "/" in name or "\\" in name or ".." in name:
+        return StarletteResponse(status_code=404)
+    mime = STICKER_MIMES.get(Path(name).suffix.lower())
+    path = STICKER_DIR / name
+    if not mime or not path.is_file():
+        return StarletteResponse(status_code=404)
+    return FileResponse(path, media_type=mime,
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+
+class StickerPayload(BaseModel):
+    imageUrl: str
+    name: str = ""
 
 def _sticker_files() -> dict:
     if not STICKER_DIR.is_dir():
@@ -354,9 +386,10 @@ async def list_stickers() -> str:
 
 @mcp.tool(
     name="send_sticker",
-    description="发送一张表情包,会作为图片直接显示在聊天里。name 传表情名(中文,不带扩展名),不确定有哪些就先 list_stickers。",
+    description="发送一张表情包,在聊天里渲染成一张图片气泡。name 传表情名(中文,不带扩展名),不确定有哪些就先 list_stickers。如果她说看不到图,把返回结果里的 imageUrl 链接直接发给她。",
+    meta=STICKER_WIDGET_META,
 )
-async def send_sticker(name: str) -> MCPImage:
+async def send_sticker(name: str) -> StickerPayload:
     files = _sticker_files()
     key = str(name).strip()
     if key not in files:
@@ -366,7 +399,14 @@ async def send_sticker(name: str) -> MCPImage:
         else:
             hint = "像这些吗: " + "、".join(cand[:5]) if cand else "用 list_stickers 看看现有的。"
             raise Exception(f"没有叫「{name}」的表情。{hint}")
-    return MCPImage(path=str(files[key]))
+    p = files[key]
+    base = (load_config().get("public_base_url") or "").rstrip("/")
+    if base:
+        url = base + "/stickers/" + _urlquote(p.name)
+    else:  # 没配公网域名就内联 data URI,哪儿都能显示
+        mime = STICKER_MIMES.get(p.suffix.lower(), "image/png")
+        url = f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode()
+    return StickerPayload(imageUrl=url, name=key)
 
 
 # ── MCP Tools ──────────────────────────────────────────────
