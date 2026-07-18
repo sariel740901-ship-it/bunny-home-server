@@ -331,7 +331,8 @@ from urllib.parse import quote as _urlquote
 
 STICKER_DIR = BASE_DIR.parent / "public" / "stickers"
 STICKER_JS_PATH = BASE_DIR / "dist" / "widget" / "sticker-view-widget.global.js"
-STICKER_VIEW_URI = "ui://sticker-view/mcp-app-v1.html"
+STICKER_VIEW_URI = "ui://sticker-view/mcp-app-v2.html"
+STICKER_LEGACY_URIS = ["ui://sticker-view/mcp-app-v1.html"]  # 旧 URI 返回最新 widget,同语音条
 STICKER_WIDGET_META = {"openai/outputTemplate": STICKER_VIEW_URI, "ui": {"resourceUri": STICKER_VIEW_URI}}
 
 STICKER_MIMES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
@@ -342,6 +343,17 @@ STICKER_MIMES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg
 def sticker_view() -> str:
     """Inline sticker widget for chat."""
     return widget_html(STICKER_JS_PATH)
+
+
+def _register_sticker_aliases():
+    _csp = csp_meta(load_config())
+    for _i, _uri in enumerate(STICKER_LEGACY_URIS):
+        def _alias() -> str:
+            return widget_html(STICKER_JS_PATH)
+        mcp.resource(_uri, mime_type=VOICE_VIEW_MIME, name=f"sticker-view-legacy-{_i + 1}", meta=_csp)(_alias)
+
+
+_register_sticker_aliases()
 
 
 @mcp.custom_route("/stickers/{name}", methods=["GET"])
@@ -360,6 +372,11 @@ async def serve_sticker(request):
 class StickerPayload(BaseModel):
     imageUrl: str
     name: str = ""
+    senderName: str = "小克"
+    colorPrimary: str = "#e898a4"
+    colorSecondary: str = "#d97f8e"
+    colorBg: str = "#2b1f26"
+    colorBgEnd: str = "#241a20"
 
 def _sticker_files() -> dict:
     if not STICKER_DIR.is_dir():
@@ -400,13 +417,22 @@ async def send_sticker(name: str) -> StickerPayload:
             hint = "像这些吗: " + "、".join(cand[:5]) if cand else "用 list_stickers 看看现有的。"
             raise Exception(f"没有叫「{name}」的表情。{hint}")
     p = files[key]
-    base = (load_config().get("public_base_url") or "").rstrip("/")
+    cfg = load_config()
+    base = (cfg.get("public_base_url") or "").rstrip("/")
     if base:
         url = base + "/stickers/" + _urlquote(p.name)
     else:  # 没配公网域名就内联 data URI,哪儿都能显示
         mime = STICKER_MIMES.get(p.suffix.lower(), "image/png")
         url = f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode()
-    return StickerPayload(imageUrl=url, name=key)
+    style = cfg.get("style", {})
+    return StickerPayload(
+        imageUrl=url, name=key,
+        senderName=style.get("sender_name", "小克"),
+        colorPrimary=style.get("color_primary", "#e898a4"),
+        colorSecondary=style.get("color_secondary", "#d97f8e"),
+        colorBg=style.get("color_bg", "#2b1f26"),
+        colorBgEnd=style.get("color_bg_end", "#241a20"),
+    )
 
 
 # ── MCP Tools ──────────────────────────────────────────────
