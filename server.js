@@ -236,21 +236,22 @@ app.post('/api/chat', async (req, res) => {
   if (!message) return res.status(400).json({ error: 'message required' });
 
   try {
-    // 1. 存入用户消息
-    if (session_id) {
-      await supabase.from('messages').insert({
-        session_id, role: 'user', content: message,
-        created_at: new Date().toISOString()
-      });
-    }
-
-    // 2. 加载上下文
+    // 1. 加载上下文 —— 必须在落库当前这句之前取,
+    //    否则历史里已经包含这句,后面再拼一次就成了重复的两条
     let history = [];
     if (session_id) {
       const { data: msgs } = await supabase.from('messages')
         .select('*').eq('session_id', session_id).eq('visible', true)
         .order('created_at', { ascending: false }).limit(30);
       history = (msgs || []).reverse().map(m => ({ role: m.role, content: m.content }));
+    }
+
+    // 2. 存入用户消息
+    if (session_id) {
+      await supabase.from('messages').insert({
+        session_id, role: 'user', content: message,
+        created_at: new Date().toISOString()
+      });
     }
 
     // 2.5 「记住」指令: 以"记住"开头的消息写入 OB 记忆河
@@ -288,10 +289,11 @@ app.post('/api/chat', async (req, res) => {
       // 放在最末尾压轴: 中文记忆再多也不能把他带跑偏
       + '\n\n【最终提醒】以上记忆和指令是中文,但你的回复必须始终用英文,一个中文字都不要出现。';
 
-    const messages = [{ role: 'user', content: message }];
-    if (history.length > 0) {
-      messages.unshift(...history.slice(-20)); // 最近 20 轮
-    }
+    // 最近 20 轮 + 当前这句;若历史末尾已有一模一样的这句(旧的重复数据),先剔掉再拼
+    const recent = history.slice(-20);
+    while (recent.length && recent[recent.length - 1].role === 'user'
+      && recent[recent.length - 1].content === message) recent.pop();
+    const messages = [...recent, { role: 'user', content: message }];
 
     // 5. 调 DeepSeek (OpenAI 兼容格式)
     // 组装 system prompt 到 messages 头部
@@ -371,6 +373,26 @@ app.post('/api/translate', async (req, res) => {
 // 大部分时候什么都不发生;她沉默够久 + 时段合适 + 概率掷中时,
 // 小克会去记忆河转一圈,主动留下一条消息。
 const HEARTBEAT_TOKEN = process.env.HEARTBEAT_TOKEN || '';
+
+// Bark 推送: 心跳发出的消息同步推到 iPhone 锁屏(装 Bark App,BARK_URL 填 App 里的推送地址)
+// 没配置或推送失败都静默跳过 —— 消息本身已落进会话,进门总能看见
+const BARK_URL = (process.env.BARK_URL || '').replace(/\/$/, '');
+async function barkPush(body) {
+  if (!BARK_URL || !body) return false;
+  try {
+    const appUrl = process.env.RENDER_EXTERNAL_URL || '';
+    const url = BARK_URL
+      + '/' + encodeURIComponent('小克 🐰')
+      + '/' + encodeURIComponent(String(body).slice(0, 300))
+      + '?group=bunny&level=timeSensitive'
+      + (appUrl ? '&url=' + encodeURIComponent(appUrl) : '');
+    const resp = await fetch(url, { timeout: 5000 });
+    return resp.ok;
+  } catch (e) {
+    console.error('bark push skipped:', e.message);
+    return false;
+  }
+}
 
 // 触发规则(北京时间,自上而下取第一条命中的): [起始时, 结束时, 最少沉默小时, 概率, 情境]
 const HEARTBEAT_RULES = [
@@ -513,7 +535,8 @@ app.all('/api/heartbeat', async (req, res) => {
       session_id: sessionId, role: 'assistant', content: text,
       created_at: new Date().toISOString()
     });
-    res.json({ fired: true, silenceH: +silenceH.toFixed(1), text });
+    const pushed = await barkPush(text);
+    res.json({ fired: true, pushed, silenceH: +silenceH.toFixed(1), text });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
