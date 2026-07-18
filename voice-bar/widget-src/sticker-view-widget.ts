@@ -48,26 +48,21 @@ function render(data: StickerData, platform: "chatgpt" | "claude") {
   if (!root) return;
   root.innerHTML = "";
 
-  // Full-width skin card, same visual family as the voice bubble — so if the host
-  // keeps the widget at full row width there's no bare gap, and if it honors our
-  // reported width the card simply shrinks around the sticker.
+  // Chameleon card: the host keeps the widget at full row width and paints a bare
+  // frame around transparent content, so instead of a decorated skin we blend in —
+  // paint the same background as the claude.ai chat page (light/dark follows the
+  // device color scheme) and let the sticker sit on it like a plain image.
+  const dark = typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const pageBg = dark ? "#262624" : "#faf9f5";
+
   const card = document.createElement("div");
   card.id = "stk-card";
   card.style.cssText = `
     position:relative; box-sizing:border-box; width:100%;
-    display:flex; align-items:center; padding:14px 18px 24px;
-    background:radial-gradient(140px 90px at 20% 40%, ${data.colorPrimary}30, transparent 72%),
-      radial-gradient(160px 120px at 88% 120%, ${data.colorSecondary}22, transparent 70%),
-      linear-gradient(135deg, ${data.colorBg}, ${data.colorBgEnd});
-    overflow:hidden;
+    display:flex; align-items:center; padding:8px 10px;
+    background:${pageBg}; overflow:hidden;
     font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei UI",sans-serif;`;
-
-  const deco = document.createElement("div");
-  deco.id = "stk-deco";
-  deco.textContent = "✦";
-  deco.style.cssText = `position:absolute; right:20px; top:12px; font-size:14px;
-    color:${data.colorPrimary}; opacity:0.35; pointer-events:none;`;
-  card.appendChild(deco);
 
   const img = document.createElement("img");
   img.id = "stk-img";
@@ -75,18 +70,20 @@ function render(data: StickerData, platform: "chatgpt" | "claude") {
   img.alt = data.name;
   img.title = data.name;
   img.style.cssText =
-    "max-width:170px; max-height:170px; border-radius:12px; display:block; position:relative; z-index:1;";
+    "max-width:170px; max-height:170px; border-radius:12px; display:block;";
   card.appendChild(img);
-
-  if (data.senderName) {
-    const nameEl = document.createElement("div");
-    nameEl.id = "stk-name";
-    nameEl.textContent = data.senderName + " · 表情";
-    nameEl.style.cssText = `position:absolute; left:20px; bottom:8px; font-size:9px;
-      color:rgba(255,255,255,0.4); pointer-events:none;`;
-    card.appendChild(nameEl);
-  }
   root.appendChild(card);
+
+  // follow live theme switches too
+  if (typeof window.matchMedia === "function") {
+    try {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+        card.style.background = e.matches ? "#262624" : "#faf9f5";
+      });
+    } catch {
+      /* older engines */
+    }
+  }
 
   // Report height, plus the CONTENT width (sticker + padding) — hosts that honor
   // width shrink the frame to sticker size; hosts that don't still get the skin.
@@ -96,7 +93,7 @@ function render(data: StickerData, platform: "chatgpt" | "claude") {
       if (h <= 0) return;
       const w = Math.min(
         Math.ceil(window.innerWidth),
-        Math.ceil(img.getBoundingClientRect().width) + 36 + 4
+        Math.ceil(img.getBoundingClientRect().width) + 24
       );
       document.documentElement.style.height = h + "px";
       document.body.style.height = h + "px";
@@ -115,7 +112,7 @@ function render(data: StickerData, platform: "chatgpt" | "claude") {
     });
     img.addEventListener("error", () => {
       card.innerHTML =
-        `<div style="color:#e8dee2;font-size:13px;padding:8px;">图片加载失败: ${data.name}</div>`;
+        `<div style="color:#8a8580;font-size:13px;padding:8px;">图片加载失败: ${data.name}</div>`;
       reportSize();
     });
   }

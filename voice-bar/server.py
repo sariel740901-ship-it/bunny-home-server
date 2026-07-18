@@ -331,8 +331,11 @@ from urllib.parse import quote as _urlquote
 
 STICKER_DIR = BASE_DIR.parent / "public" / "stickers"
 STICKER_JS_PATH = BASE_DIR / "dist" / "widget" / "sticker-view-widget.global.js"
-STICKER_VIEW_URI = "ui://sticker-view/mcp-app-v2.html"
-STICKER_LEGACY_URIS = ["ui://sticker-view/mcp-app-v1.html"]  # 旧 URI 返回最新 widget,同语音条
+STICKER_VIEW_URI = "ui://sticker-view/mcp-app-v3.html"
+STICKER_LEGACY_URIS = [  # 旧 URI 返回最新 widget,同语音条
+    "ui://sticker-view/mcp-app-v1.html",
+    "ui://sticker-view/mcp-app-v2.html",
+]
 STICKER_WIDGET_META = {"openai/outputTemplate": STICKER_VIEW_URI, "ui": {"resourceUri": STICKER_VIEW_URI}}
 
 STICKER_MIMES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
