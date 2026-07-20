@@ -1,0 +1,4 @@
+# cookie 和暗号都是钥匙,只留在本地
+cookies.txt
+token.txt
+__pycache__/
