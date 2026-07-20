@@ -423,7 +423,8 @@ async def send_sticker(name: str) -> StickerPayload:
     cfg = load_config()
     base = (cfg.get("public_base_url") or "").rstrip("/")
     if base:
-        url = base + "/stickers/" + _urlquote(p.name)
+        # ?v=文件修改时间 —— 换图后 URL 自动变,Cloudflare/浏览器的旧缓存追不上来
+        url = base + "/stickers/" + _urlquote(p.name) + "?v=" + str(int(p.stat().st_mtime))
     else:  # 没配公网域名就内联 data URI,哪儿都能显示
         mime = STICKER_MIMES.get(p.suffix.lower(), "image/png")
         url = f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode()
