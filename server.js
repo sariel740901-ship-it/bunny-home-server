@@ -176,14 +176,19 @@ function listStickers() {
   try {
     list = fs.readdirSync(STICKER_DIR)
       .filter(f => !f.startsWith('.') && /\.(png|jpe?g|gif|webp)$/i.test(f))
-      .map(f => ({ name: f.replace(/\.[^.]+$/, '').trim(), file: f }))
+      .map(f => {
+        let v = 0;
+        try { v = Math.floor(fs.statSync(path.join(STICKER_DIR, f)).mtimeMs / 1000); } catch (e) {}
+        return { name: f.replace(/\.[^.]+$/, '').trim(), file: f, v };
+      })
       .filter(s => s.name);
   } catch (e) { /* 文件夹不存在就当没有表情 */ }
   stickerCache = { at: Date.now(), list };
   return list;
 }
 app.get('/api/stickers', (req, res) => {
-  res.json(listStickers().map(s => ({ name: s.name, url: '/stickers/' + encodeURIComponent(s.file) })));
+  // ?v=修改时间 —— 换图后 URL 自动变,浏览器旧缓存失效
+  res.json(listStickers().map(s => ({ name: s.name, url: '/stickers/' + encodeURIComponent(s.file) + '?v=' + s.v })));
 });
 
 // 桥接自检: 浏览器访问 /api/memory-bridge-test?q=关键词 直接看检索结果
