@@ -270,7 +270,12 @@ void handleCommand(JsonDocument& doc) {
 // ── 主流程 ────────────────────────────────────────────
 void setup() {
   M5StackChan.begin();  // BSP 无参,内部自己初始化 M5Unified
-  M5.Speaker.setVolume(200);
+  // BSP 的初始化不一定启用内建喇叭 —— 这里强制拉起,并开机哔一声自检:
+  // 听到"哔"= 喇叭活着;听不到 = 喇叭初始化仍有问题,把现象告诉 fable
+  M5.Speaker.begin();
+  M5.Speaker.setVolume(255);
+  M5.Speaker.tone(2000, 150);
+  delay(300);
 
   avatar.init();
   avatar.setExpression(Expression::Sleepy);  // 醒来前的脸
