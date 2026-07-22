@@ -269,8 +269,7 @@ void handleCommand(JsonDocument& doc) {
 
 // ── 主流程 ────────────────────────────────────────────
 void setup() {
-  auto cfg = M5.config();
-  M5StackChan.begin(cfg);
+  M5StackChan.begin();  // BSP 无参,内部自己初始化 M5Unified
   M5.Speaker.setVolume(200);
 
   avatar.init();
