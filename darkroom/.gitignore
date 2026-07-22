@@ -1,0 +1,4 @@
+# 暗房里的一切都只留在本地
+vault/
+token.txt
+__pycache__/
