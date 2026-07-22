@@ -2,14 +2,14 @@
  * 小克的身体 — M5Stack StackChan (CoreS3) 固件
  *
  * 工作方式: 连 WiFi → 循环长轮询中继服务器拉命令 → 执行 → 汇报结果。
- *   speak     拉中继生成的 mp3(小克的 ElevenLabs 声线)播放,说话时嘴会动
+ *   speak     拉中继生成的 PCM 音频(小克的 ElevenLabs 声线)直灌喇叭,说话时嘴会动
  *   emote     切表情 (M5Stack-Avatar)
  *   move_head 转头 (官方 BSP: 横 ±128°,竖 0~90°)
  *   wiggle    开心地左右摇头
  *   snapshot  拍一张眼前的画面传回中继 (config.h 里 ENABLE_CAMERA 1 开启)
  *
  * 依赖库(库管理器安装): StackChan-BSP(及其依赖 M5Unified / IRremoteESP8266 / M5Unit-NFC)、
- *                        M5Stack_Avatar、ESP8266Audio、ArduinoJson
+ *                        M5Stack_Avatar、ArduinoJson (ESP8266Audio 已不需要)
  * 板子: M5CoreS3;Tools → PSRAM 选 "OPI PSRAM"
  */
 
@@ -19,9 +19,6 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <AudioGeneratorMP3.h>
-#include <AudioFileSourcePROGMEM.h>
-#include <AudioOutput.h>
 #include "config.h"
 
 #if ENABLE_CAMERA
@@ -31,41 +28,15 @@
 
 using namespace m5avatar;
 
-// ── 把 ESP8266Audio 的输出接到 M5 喇叭 (经典三缓冲写法) ──
-class AudioOutputM5Speaker : public AudioOutput {
-public:
-  AudioOutputM5Speaker(m5::Speaker_Class* spk, uint8_t ch = 0)
-      : _spk(spk), _ch(ch), _idx(0), _cur(0) {}
-  bool begin() override { return true; }
-  bool ConsumeSample(int16_t sample[2]) override {
-    _buf[_cur][_idx++] = (int16_t)((sample[0] + sample[1]) / 2);
-    if (_idx >= CHUNK) flushChunk();
-    return true;
-  }
-  bool stop() override { flushChunk(); return true; }
-  void flushChunk() {
-    if (_idx == 0) return;
-    while (_spk->isPlaying(_ch) == 2) { vTaskDelay(1); }  // 队列满就稍等
-    _spk->playRaw(_buf[_cur], _idx, hertz, false, 1, _ch);
-    _cur = (_cur + 1) % 3;
-    _idx = 0;
-  }
-private:
-  static const size_t CHUNK = 640;
-  m5::Speaker_Class* _spk;
-  uint8_t _ch;
-  size_t _idx, _cur;
-  int16_t _buf[3][CHUNK];
-};
-
 // ── 全局 ─────────────────────────────────────────────
+// 说话 = 中继发来 16kHz 单声道 PCM,下载后整段灌进 M5.Speaker.playRaw,
+// 不需要任何解码器 —— 少一个零件,少一类故障
 Avatar avatar;
 long lastCmdId = 0;
 
-AudioGeneratorMP3* mp3 = nullptr;
-AudioFileSourcePROGMEM* mp3src = nullptr;
-AudioOutputM5Speaker* mp3out = nullptr;
-uint8_t* mp3buf = nullptr;
+uint8_t* pcmBuf = nullptr;
+size_t pcmLen = 0;
+bool speaking = false;
 long speakingCmdId = 0;
 unsigned long lastMouthAt = 0;
 
@@ -93,9 +64,9 @@ void httpPostJson(const String& url, const String& json) {
   http.end();
 }
 
-// 下载 mp3 到 PSRAM,成功返回长度,失败返回 0
+// 下载音频到 PSRAM,成功返回长度,失败返回 0
 size_t downloadToPsram(const String& url, uint8_t** out) {
-  const size_t CAP = 1024 * 1024;  // 1MB 封顶,300 字的低码率语音绰绰有余
+  const size_t CAP = 3 * 1024 * 1024;  // 3MB 封顶,16kHz PCM 一分半钟也装得下
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -191,33 +162,29 @@ void setExpressionByName(const String& e) {
   else avatar.setExpression(Expression::Neutral);
 }
 
-void startSpeak(long id, const String& text, const String& audioUrl) {
+void stopSpeak() {
+  M5.Speaker.stop();
+  if (pcmBuf) { free(pcmBuf); pcmBuf = nullptr; }
+  pcmLen = 0;
+  speaking = false;
+  avatar.setMouthOpenRatio(0);
+}
+
+void startSpeak(long id, const String& text, const String& audioUrl, int rate) {
   if (audioUrl.length() == 0) {
     reportResult(id, false, "no audio url (TTS failed)");
     return;
   }
-  size_t len = downloadToPsram(audioUrl, &mp3buf);
-  if (len == 0) {
+  stopSpeak();  // 若上一句还在放,掐掉换新的
+  pcmLen = downloadToPsram(audioUrl, &pcmBuf);
+  if (pcmLen == 0) {
     reportResult(id, false, "audio download failed");
     return;
   }
-  mp3src = new AudioFileSourcePROGMEM(mp3buf, len);
-  mp3out = new AudioOutputM5Speaker(&M5.Speaker, 0);
-  mp3 = new AudioGeneratorMP3();
-  if (!mp3->begin(mp3src, mp3out)) {
-    stopSpeak();
-    reportResult(id, false, "mp3 decode failed");
-    return;
-  }
+  // 整段 PCM 一次交给喇叭,DMA 自己慢慢放
+  M5.Speaker.playRaw((const int16_t*)pcmBuf, pcmLen / 2, (uint32_t)rate, false, 1, 0);
+  speaking = true;
   speakingCmdId = id;
-}
-
-void stopSpeak() {
-  if (mp3) { if (mp3->isRunning()) mp3->stop(); delete mp3; mp3 = nullptr; }
-  if (mp3src) { delete mp3src; mp3src = nullptr; }
-  if (mp3out) { delete mp3out; mp3out = nullptr; }
-  if (mp3buf) { free(mp3buf); mp3buf = nullptr; }
-  avatar.setMouthOpenRatio(0);
 }
 
 void handleCommand(JsonDocument& doc) {
@@ -226,7 +193,7 @@ void handleCommand(JsonDocument& doc) {
   lastCmdId = id;
 
   if (action == "speak") {
-    startSpeak(id, doc["text"] | "", doc["audio"] | "");
+    startSpeak(id, doc["text"] | "", doc["audio"] | "", doc["rate"] | 16000);
     // speak 的结果等播放结束后再报
   } else if (action == "emote") {
     setExpressionByName(doc["expression"] | "neutral");
@@ -305,9 +272,9 @@ void setup() {
 void loop() {
   M5.update();
 
-  // 说话中: 全力喂解码器 + 让嘴动起来
-  if (mp3 && mp3->isRunning()) {
-    if (!mp3->loop()) {
+  // 说话中: 喇叭 DMA 自己在放,这里只负责让嘴动 + 等它放完
+  if (speaking) {
+    if (!M5.Speaker.isPlaying(0)) {
       long id = speakingCmdId;
       stopSpeak();
       reportResult(id, true, "spoken");
@@ -315,6 +282,7 @@ void loop() {
       avatar.setMouthOpenRatio(random(3, 10) / 10.0f);
       lastMouthAt = millis();
     }
+    delay(30);
     return;
   }
 
