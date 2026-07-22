@@ -115,13 +115,14 @@ async def _tts_to_url(text: str) -> str:
         return ""
     # 声音 ID 和语速也算进指纹 —— 换了音色,同一句话也会重新合成,不吃旧缓存
     key = hashlib.sha1(
-        f"stackchan|{el.get('voice_id')}|{el.get('speed', 0.9)}|{text}".encode("utf-8")
+        f"stackchan|pcm|{el.get('voice_id')}|{el.get('speed', 0.9)}|{text}".encode("utf-8")
     ).hexdigest()[:20]
-    name = key + ".mp3"
+    name = key + ".pcm"
     path = AUDIO_DIR / name
     if not path.exists():
+        # PCM 16kHz 单声道 —— 机器人拿到直接灌喇叭,不用带 mp3 解码器(那是 ESP32 上最娇气的零件)
         url = (f"https://api.elevenlabs.io/v1/text-to-speech/{el['voice_id']}"
-               "?output_format=mp3_22050_32")  # 低码率,ESP32 播起来轻松
+               "?output_format=pcm_16000")
         payload = {
             "text": text,
             "model_id": "eleven_multilingual_v2",
@@ -174,7 +175,8 @@ async def stackchan_speak(text: str) -> str:
     if not text:
         raise Exception("要说的话不能为空。")
     audio = await _tts_to_url(text)
-    cmd = await _issue({"action": "speak", "text": text, "audio": audio})
+    cmd = await _issue({"action": "speak", "text": text, "audio": audio,
+                        "format": "pcm", "rate": 16000})
     voice_note = "" if audio else "(语音合成失败,这条只能让它显示文字)"
     return f"已发给身体(命令 #{cmd['id']}): 说「{text[:40]}…」{voice_note} {_offline_hint()}"
 
@@ -324,12 +326,13 @@ async def snapshot(request):
 @mcp.custom_route("/audio/{name}", methods=["GET"])
 async def serve_audio(request):
     name = request.path_params.get("name", "")
-    if not name.endswith(".mp3") or "/" in name or "\\" in name or ".." in name:
+    if "/" in name or "\\" in name or ".." in name:
         return Response(status_code=404)
+    mime = {"mp3": "audio/mpeg", "pcm": "application/octet-stream"}.get(name.rsplit(".", 1)[-1])
     path = AUDIO_DIR / name
-    if not path.is_file():
+    if not mime or not path.is_file():
         return Response(status_code=404)
-    return FileResponse(path, media_type="audio/mpeg",
+    return FileResponse(path, media_type=mime,
                         headers={"Cache-Control": "public, max-age=31536000"})
 
 
