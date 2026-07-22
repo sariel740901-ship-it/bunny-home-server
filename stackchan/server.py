@@ -112,7 +112,10 @@ async def _tts_to_url(text: str) -> str:
     el = _voice_cfg()
     if not el.get("api_key") or not el.get("voice_id"):
         return ""
-    key = hashlib.sha1(("stackchan|" + text).encode("utf-8")).hexdigest()[:20]
+    # 声音 ID 和语速也算进指纹 —— 换了音色,同一句话也会重新合成,不吃旧缓存
+    key = hashlib.sha1(
+        f"stackchan|{el.get('voice_id')}|{el.get('speed', 0.9)}|{text}".encode("utf-8")
+    ).hexdigest()[:20]
     name = key + ".mp3"
     path = AUDIO_DIR / name
     if not path.exists():

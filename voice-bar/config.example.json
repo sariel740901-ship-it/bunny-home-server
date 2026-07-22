@@ -5,7 +5,7 @@
   "access_token": "自己编一串长随机字符_连接器URL要带上它",
   "elevenlabs": {
     "api_key": "把你的_ElevenLabs_Key_贴这里",
-    "voice_id": "eSdeFmqUZYQE9CY16Olm",
+    "voice_id": "P9ASm6ZzHF2mIC3VQN3x",
     "model_id": "eleven_v3",
     "stability": 0.6,
     "similarity_boost": 0.8,
