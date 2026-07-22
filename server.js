@@ -588,7 +588,7 @@ app.post('/api/tts', async (req, res) => {
   if (!ELEVENLABS_KEY) return res.status(500).json({ error: 'XI_API_KEY not configured' });
 
   const VOICE_ID = persona === 'xiaoke'
-    ? 'eSdeFmqUZYQE9CY16Olm'
+    ? 'P9ASm6ZzHF2mIC3VQN3x'
     : 'izaAcaiISn8OTktWvkQ2';
 
   try {
