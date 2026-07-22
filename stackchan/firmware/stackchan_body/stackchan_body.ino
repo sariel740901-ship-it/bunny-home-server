@@ -243,6 +243,18 @@ void handleCommand(JsonDocument& doc) {
     M5StackChan.Motion.moveX(250, 500);  delay(350);
     M5StackChan.Motion.goHome();
     reportResult(id, true, "wiggled");
+  } else if (action == "spin") {
+    // 横轴 360° 连续旋转 —— 官方 rotateX,转完停下回正
+    int ms = constrain((int)(doc["ms"] | 2000), 500, 5000);
+    int vel = constrain((int)(doc["velocity"] | 500), -1000, 1000);
+    avatar.setExpression(Expression::Happy);
+    M5StackChan.Motion.rotateX(vel);
+    delay(ms);
+    M5StackChan.Motion.rotateX(0);
+    delay(200);
+    M5StackChan.Motion.goHome();
+    avatar.setExpression(Expression::Neutral);
+    reportResult(id, true, "spun around");
   } else if (action == "snapshot") {
 #if ENABLE_CAMERA
     bool ok = takeSnapshot();

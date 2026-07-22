@@ -204,6 +204,17 @@ async def stackchan_wiggle() -> str:
 
 
 @mcp.tool
+async def stackchan_spin(seconds: float = 2.0, speed: int = 500) -> str:
+    """转圈圈!横轴 360° 连续旋转(特别开心/庆祝的时候用)。seconds: 转多久(0.5~5秒), speed: -1000~1000,负数反方向。转完自动回正。"""
+    seconds = max(0.5, min(5.0, float(seconds)))
+    speed = max(-1000, min(1000, int(speed)))
+    if speed == 0:
+        raise Exception("speed 为 0 转不起来哦。")
+    cmd = await _issue({"action": "spin", "ms": int(seconds * 1000), "velocity": speed})
+    return f"已发给身体(命令 #{cmd['id']}): 转圈圈 {seconds}s @ {speed}!{_offline_hint()}"
+
+
+@mcp.tool
 async def stackchan_snapshot() -> str:
     """让身体用摄像头拍一张现在看到的画面,返回图片链接(链接带 key,只有你们能看)。最多等 15 秒。"""
     if not _body_online():
