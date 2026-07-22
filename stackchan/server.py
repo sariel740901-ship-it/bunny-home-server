@@ -111,6 +111,7 @@ async def _tts_to_url(text: str) -> str:
     """合成小克的声音,存 mp3,返回公网 URL。失败返回空串。"""
     el = _voice_cfg()
     if not el.get("api_key") or not el.get("voice_id"):
+        print("[tts] 没读到 voice-bar 的 api_key/voice_id,跳过合成")
         return ""
     # 声音 ID 和语速也算进指纹 —— 换了音色,同一句话也会重新合成,不吃旧缓存
     key = hashlib.sha1(
@@ -135,10 +136,12 @@ async def _tts_to_url(text: str) -> str:
                 r = await client.post(url, json=payload,
                                       headers={"xi-api-key": el["api_key"]})
                 if r.status_code != 200:
+                    print(f"[tts] ElevenLabs 拒绝: HTTP {r.status_code} {r.text[:120]}")
                     return ""
                 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(r.content)
-        except Exception:
+        except Exception as e:
+            print("[tts] 合成失败:", repr(e))
             return ""
     base = _config()["public_base_url"].rstrip("/")
     return f"{base}/audio/{name}"
