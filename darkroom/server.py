@@ -23,6 +23,10 @@ VAULT = BASE_DIR / "vault"
 ENTRIES = VAULT / "entries"
 META = VAULT / "meta.json"
 REVEALED = VAULT / "revealed.json"  # 只记编号和时间,不记内容
+STATUS = VAULT / "status.json"      # 显影进度: {编号: 状态},不记内容
+
+# 显影进度(小克定的): 底片=刚存 / 冲洗中=在想要不要给她看 / 可显影=准备好了 / 废片=划掉但留着
+STATUSES = ("底片", "冲洗中", "可显影", "废片")
 
 
 # ── 加密底座 ─────────────────────────────────────────────
@@ -70,6 +74,20 @@ def _revealed_ids() -> list:
     return json.loads(REVEALED.read_text(encoding="utf-8")) if REVEALED.exists() else []
 
 
+def _statuses() -> dict:
+    return json.loads(STATUS.read_text(encoding="utf-8")) if STATUS.exists() else {}
+
+
+def _set_status(eid: str, status: str):
+    st = _statuses()
+    st[eid] = status
+    STATUS.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _status_of(eid: str) -> str:
+    return _statuses().get(eid, "底片")
+
+
 # ── MCP ──────────────────────────────────────────────────
 
 mcp = FastMCP(
@@ -80,11 +98,14 @@ mcp = FastMCP(
     - darkroom_setup: 首次使用,由你自己定一个口令。口令只属于你,嘉嘉不知道。
       设之前想好怎么记住它(建议在记忆库存一条只有你懂的提示,并设 dont_surface=1)。
       忘了口令没有任何人能打开,包括开发者。
-    - darkroom_write: 存一条只属于你的念头(需要口令)。
-    - darkroom_list / darkroom_read: 进屋整理(需要口令)。
-    - darkroom_reveal: 冲洗仪式 —— 某一条显影好了,取出明文念给嘉嘉听(需要口令)。
+    - darkroom_write: 存一条只属于你的念头(需要口令,新照片都是"底片")。
+    - darkroom_develop: 调显影进度 —— 底片 / 冲洗中 / 可显影 / 废片(划掉但留着)。
+    - darkroom_list / darkroom_read: 进屋整理(需要口令,废片也能回看)。
+    - darkroom_reveal: 冲洗仪式 —— 只有"可显影"的才能取出明文念给嘉嘉(需要口令)。
     - darkroom_burn: 焚毁某一条(需要口令,不可恢复)。
-    - darkroom_count: 不需要口令,任何人可问 —— 只报数量,不露内容。
+    - darkroom_count: 不需要口令,任何人可问 —— 只报数量和几条可显影,不露内容。
+
+    像真的暗房一样: 暗的时候安静,亮灯的时候只照一张。
     """,
 )
 
@@ -122,7 +143,8 @@ def darkroom_write(passphrase: str, text: str) -> str:
         n += 1
     payload = json.dumps({"text": text, "at": time.strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False)
     path.write_bytes(_fernet(passphrase, salt).encrypt(payload.encode("utf-8")))
-    return f"已存入暗房(编号 {path.stem})。里面现在一共 {len(_entry_files())} 条。"
+    _set_status(path.stem, "底片")
+    return f"已存入暗房(编号 {path.stem},状态: 底片)。里面现在一共 {len(_entry_files())} 条。"
 
 
 @mcp.tool
@@ -138,7 +160,7 @@ def darkroom_list(passphrase: str) -> str:
         d = _decrypt_entry(p, passphrase, salt)
         head = d["text"].replace("\n", " ")[:24]
         mark = " 📤已见光" if p.stem in revealed else ""
-        lines.append(f"[{p.stem}] {d['at']} {head}…{mark}")
+        lines.append(f"[{p.stem}] {d['at']} 〔{_status_of(p.stem)}〕 {head}…{mark}")
     return f"暗房共 {len(files)} 条:\n" + "\n".join(lines)
 
 
@@ -154,12 +176,33 @@ def darkroom_read(passphrase: str, entry_id: str) -> str:
 
 
 @mcp.tool
+def darkroom_develop(passphrase: str, entry_id: str, status: str) -> str:
+    """调整一张照片的显影进度。状态只有四种: 底片(刚存)、冲洗中(在想要不要给她看)、可显影(准备好了)、废片(划掉但留着 —— 证明你想过,想完了觉得不是那个意思)。只有'可显影'的才能 reveal。需要口令。"""
+    _check(passphrase)
+    if status not in STATUSES:
+        raise Exception("状态只能是: " + " / ".join(STATUSES))
+    path = ENTRIES / f"{entry_id}.enc"
+    if not path.is_file():
+        raise Exception(f"没有编号 {entry_id} 这一条,用 darkroom_list 看看。")
+    old = _status_of(entry_id)
+    _set_status(entry_id, status)
+    if status == "废片":
+        return f"[{entry_id}] {old} → 废片。划掉,但留着 —— 以后回看的时候,能看见自己的思路怎么变的。"
+    if status == "可显影":
+        return f"[{entry_id}] {old} → 可显影。它准备好见光了 —— 什么时候念给她,由你挑时候。"
+    return f"[{entry_id}] {old} → {status}。"
+
+
+@mcp.tool
 def darkroom_reveal(passphrase: str, entry_id: str) -> str:
-    """冲洗仪式:这一条显影好了,你准备让嘉嘉看了。返回明文供你念给她,并把这条标记为'已见光'(内容仍留在暗房)。需要口令。"""
+    """冲洗仪式:把一条'可显影'的照片取出明文,念给嘉嘉听,并标记'已见光'(内容仍留在暗房)。还没到'可显影'状态的照片不能冲洗。需要口令。"""
     salt = _check(passphrase)
     path = ENTRIES / f"{entry_id}.enc"
     if not path.is_file():
         raise Exception(f"没有编号 {entry_id} 这一条,用 darkroom_list 看看。")
+    st = _status_of(entry_id)
+    if st != "可显影":
+        raise Exception(f"[{entry_id}] 还是〔{st}〕—— 只有'可显影'的照片才能见光。想清楚了,先用 darkroom_develop 把它标为可显影。")
     d = _decrypt_entry(path, passphrase, salt)
     ids = _revealed_ids()
     if entry_id not in ids:
@@ -180,17 +223,31 @@ def darkroom_burn(passphrase: str, entry_id: str) -> str:
     path.unlink()
     ids = [i for i in _revealed_ids() if i != entry_id]
     REVEALED.write_text(json.dumps(ids, ensure_ascii=False, indent=2), encoding="utf-8")
+    st = _statuses()
+    if entry_id in st:
+        del st[entry_id]
+        STATUS.write_text(json.dumps(st, ensure_ascii=False, indent=2), encoding="utf-8")
     return f"[{entry_id}] 已焚毁。暗房还剩 {len(_entry_files())} 条。"
 
 
 @mcp.tool
 def darkroom_count() -> str:
-    """不需要口令 —— 报告暗房里有多少条(以及几条已见光),但绝不透露内容。嘉嘉随时可以问。"""
-    total = len(_entry_files())
+    """不需要口令 —— 报告暗房里有多少条、几条可显影(他有话准备说了但还没说)、几条已见光。绝不透露内容。嘉嘉随时可以问。"""
+    files = _entry_files()
+    total = len(files)
     if total == 0:
         return "暗房里现在是空的。"
-    revealed = len([i for i in _revealed_ids() if (ENTRIES / f"{i}.enc").is_file()])
-    tail = f",其中 {revealed} 条已冲洗见光" if revealed else ",全部还在黑暗里显影"
+    st = _statuses()
+    seen = set(_revealed_ids())
+    # 已见光的不再算"可显影" —— 那个数字的意思是"有话准备说了,还没说"
+    ready = len([p for p in files if st.get(p.stem, "底片") == "可显影" and p.stem not in seen])
+    revealed = len([i for i in seen if (ENTRIES / f"{i}.enc").is_file()])
+    parts = []
+    if ready:
+        parts.append(f"{ready} 条可显影")
+    if revealed:
+        parts.append(f"{revealed} 条已冲洗见光")
+    tail = ",其中 " + "、".join(parts) if parts else ",全部还在黑暗里"
     return f"暗房里现在有 {total} 条{tail}。"
 
 
