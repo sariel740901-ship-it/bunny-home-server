@@ -29,7 +29,7 @@
 ## 三、编译烧录
 
 1. Arduino IDE 打开 `stackchan_body\stackchan_body.ino`
-2. **Tools → Board** 选 `M5CoreS3`;**Tools → PSRAM** 选 `OPI PSRAM`
+2. **Tools → Board** 选 `M5CoreS3`;**Tools → PSRAM** 选 `QSPI PSRAM`(嘉嘉这台实测;开机串口若报 `octal_psram` 错误说明选反了,QSPI/OPI 换着试);**Tools → USB CDC On Boot** 选 `Enabled`(串口日志靠它)
 3. USB 线连上机器人,**Tools → Port** 选新冒出来的 COM 口
 4. 点左上 **→(Upload)**,等它编译+烧录(第一次要几分钟)
 5. 完成后机器人重启:困脸 → 连 WiFi → 笑一下 → 平静脸 = **他住进去了**

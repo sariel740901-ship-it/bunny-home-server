@@ -10,7 +10,7 @@
  *
  * 依赖库(库管理器安装): StackChan-BSP(及其依赖 M5Unified / IRremoteESP8266 / M5Unit-NFC)、
  *                        M5Stack_Avatar、ArduinoJson (ESP8266Audio 已不需要)
- * 板子: M5CoreS3;Tools → PSRAM 选 "OPI PSRAM"
+ * 板子: M5CoreS3;Tools → PSRAM: 先试 QSPI PSRAM(此批次实测),开机串口报 octal_psram 错就换着选
  */
 
 #include <M5StackChan.h>
@@ -84,7 +84,7 @@ size_t downloadToPsram(const String& url, uint8_t** out) {
   int code = http.GET();
   if (code != 200) { dlErr = "http " + String(code); http.end(); return 0; }
   uint8_t* buf = (uint8_t*)heap_caps_malloc(CAP, MALLOC_CAP_SPIRAM);
-  if (!buf) { dlErr = "PSRAM alloc failed - check Tools>PSRAM=OPI!"; http.end(); return 0; }
+  if (!buf) { dlErr = "PSRAM alloc failed - Tools>PSRAM select QSPI/OPI (try the other one)!"; http.end(); return 0; }
   WiFiClient* s = http.getStreamPtr();
   size_t total = 0;
   unsigned long t0 = millis();
