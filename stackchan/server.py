@@ -175,8 +175,10 @@ async def stackchan_speak(text: str) -> str:
     if not text:
         raise Exception("要说的话不能为空。")
     audio = await _tts_to_url(text)
+    # audio_path 是相对路径 —— 固件会拼上自己的 RELAY_BASE(推荐局域网直连,快)
+    audio_path = "/audio/" + audio.rsplit("/", 1)[-1] if audio else ""
     cmd = await _issue({"action": "speak", "text": text, "audio": audio,
-                        "format": "pcm", "rate": 16000})
+                        "audio_path": audio_path, "format": "pcm", "rate": 16000})
     voice_note = "" if audio else "(语音合成失败,这条只能让它显示文字)"
     return f"已发给身体(命令 #{cmd['id']}): 说「{text[:40]}…」{voice_note} {_offline_hint()}"
 
