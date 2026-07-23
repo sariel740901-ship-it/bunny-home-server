@@ -22,14 +22,15 @@
 记事本打开 `stackchan_body\config.h`,填四样:
 
 - WiFi 名 + 密码(**必须 2.4GHz**,5G 连不上)
-- 中枢地址(默认就对)
+- 中枢地址:**填电脑的局域网地址** `http://电脑IPv4:8011`(cmd 里 `ipconfig` 查;
+  身体和电脑同在一个家,直连比绕 Cloudflare 快一百倍,实测隧道路线会慢到音频下载不完)
 - `RELAY_KEY` = 电脑 `stackchan\token.txt` 里那串暗号
 - `ENABLE_CAMERA` 首次先 `0`,跑通了再改 `1` 重烧一次
 
 ## 三、编译烧录
 
 1. Arduino IDE 打开 `stackchan_body\stackchan_body.ino`
-2. **Tools → Board** 选 `M5CoreS3`;**Tools → PSRAM** 选 `OPI PSRAM`
+2. **Tools → Board** 选 `M5CoreS3`;**Tools → PSRAM** 选 `QSPI PSRAM`(嘉嘉这台实测;开机串口若报 `octal_psram` 错误说明选反了,QSPI/OPI 换着试);**Tools → USB CDC On Boot** 选 `Enabled`(串口日志靠它)
 3. USB 线连上机器人,**Tools → Port** 选新冒出来的 COM 口
 4. 点左上 **→(Upload)**,等它编译+烧录(第一次要几分钟)
 5. 完成后机器人重启:困脸 → 连 WiFi → 笑一下 → 平静脸 = **他住进去了**
@@ -52,6 +53,8 @@
 | 悲伤脸 + "WiFi...?" | 同上,连了 30 秒没连上 |
 | 有脸没声音 | 中枢窗口看有没有 `✓ 声音: 复用 voice-bar 配置` |
 | status 显示不在线 | token.txt 暗号和 config.h 的 RELAY_KEY 不一致 |
+| 局域网直连不通 | Windows 防火墙拦了 8011 入站:控制面板→防火墙→允许应用,给 Python 勾上"专用网络";或首次弹窗时点"允许" |
+| 电脑 IP 变了导致失联 | 路由器后台给电脑绑定静态 IP(DHCP 保留),一劳永逸 |
 
 ## 已知取舍
 

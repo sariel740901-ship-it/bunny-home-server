@@ -10,7 +10,7 @@
  *
  * 依赖库(库管理器安装): StackChan-BSP(及其依赖 M5Unified / IRremoteESP8266 / M5Unit-NFC)、
  *                        M5Stack_Avatar、ArduinoJson (ESP8266Audio 已不需要)
- * 板子: M5CoreS3;Tools → PSRAM 选 "OPI PSRAM"
+ * 板子: M5CoreS3;Tools → PSRAM: 先试 QSPI PSRAM(此批次实测),开机串口报 octal_psram 错就换着选
  */
 
 #include <M5StackChan.h>
@@ -48,12 +48,20 @@ static int16_t chunkBuf[2][CHUNK_SAMPLES];
 static int chunkIdx = 0;
 
 // ── HTTP 小工具 ───────────────────────────────────────
+// http:// 走明文(局域网直连,快),https:// 走 TLS(出隧道)
+bool beginHttp(HTTPClient& http, WiFiClient& plain, WiFiClientSecure& secure, const String& url) {
+  if (url.startsWith("https")) {
+    secure.setInsecure();
+    return http.begin(secure, url);
+  }
+  return http.begin(plain, url);
+}
+
 String httpGetText(const String& url, int timeoutMs) {
-  WiFiClientSecure client;
-  client.setInsecure();
+  WiFiClient plain; WiFiClientSecure secure;
   HTTPClient http;
   http.setTimeout(timeoutMs);
-  if (!http.begin(client, url)) return "";
+  if (!beginHttp(http, plain, secure, url)) return "";
   int code = http.GET();
   String body = (code == 200) ? http.getString() : "";
   http.end();
@@ -61,11 +69,10 @@ String httpGetText(const String& url, int timeoutMs) {
 }
 
 void httpPostJson(const String& url, const String& json) {
-  WiFiClientSecure client;
-  client.setInsecure();
+  WiFiClient plain; WiFiClientSecure secure;
   HTTPClient http;
   http.setTimeout(10000);
-  if (!http.begin(client, url)) return;
+  if (!beginHttp(http, plain, secure, url)) return;
   http.addHeader("Content-Type", "application/json");
   http.POST(json);
   http.end();
@@ -76,15 +83,14 @@ String dlErr = "";
 size_t downloadToPsram(const String& url, uint8_t** out) {
   const size_t CAP = 3 * 1024 * 1024;  // 3MB 封顶,16kHz PCM 一分半钟也装得下
   dlErr = "";
-  WiFiClientSecure client;
-  client.setInsecure();
+  WiFiClient plain; WiFiClientSecure secure;
   HTTPClient http;
   http.setTimeout(20000);
-  if (!http.begin(client, url)) { dlErr = "http begin failed"; return 0; }
+  if (!beginHttp(http, plain, secure, url)) { dlErr = "http begin failed"; return 0; }
   int code = http.GET();
   if (code != 200) { dlErr = "http " + String(code); http.end(); return 0; }
   uint8_t* buf = (uint8_t*)heap_caps_malloc(CAP, MALLOC_CAP_SPIRAM);
-  if (!buf) { dlErr = "PSRAM alloc failed - check Tools>PSRAM=OPI!"; http.end(); return 0; }
+  if (!buf) { dlErr = "PSRAM alloc failed - Tools>PSRAM select QSPI/OPI (try the other one)!"; http.end(); return 0; }
   WiFiClient* s = http.getStreamPtr();
   size_t total = 0;
   unsigned long t0 = millis();
@@ -219,7 +225,10 @@ void handleCommand(JsonDocument& doc) {
   lastCmdId = id;
 
   if (action == "speak") {
-    startSpeak(id, doc["text"] | "", doc["audio"] | "", doc["rate"] | 16000);
+    String audioUrl = doc["audio"] | "";
+    String audioPath = doc["audio_path"] | "";
+    if (audioPath.length() > 0) audioUrl = String(RELAY_BASE) + audioPath;  // 走自己的基地址(局域网快)
+    startSpeak(id, doc["text"] | "", audioUrl, doc["rate"] | 16000);
     // speak 的结果等播放结束后再报
   } else if (action == "emote") {
     setExpressionByName(doc["expression"] | "neutral");
