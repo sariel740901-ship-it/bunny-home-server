@@ -71,17 +71,20 @@ void httpPostJson(const String& url, const String& json) {
   http.end();
 }
 
-// 下载音频到 PSRAM,成功返回长度,失败返回 0
+// 下载音频到 PSRAM,成功返回长度,失败返回 0(失败原因写进 dlErr)
+String dlErr = "";
 size_t downloadToPsram(const String& url, uint8_t** out) {
   const size_t CAP = 3 * 1024 * 1024;  // 3MB 封顶,16kHz PCM 一分半钟也装得下
+  dlErr = "";
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   http.setTimeout(20000);
-  if (!http.begin(client, url)) return 0;
-  if (http.GET() != 200) { http.end(); return 0; }
+  if (!http.begin(client, url)) { dlErr = "http begin failed"; return 0; }
+  int code = http.GET();
+  if (code != 200) { dlErr = "http " + String(code); http.end(); return 0; }
   uint8_t* buf = (uint8_t*)heap_caps_malloc(CAP, MALLOC_CAP_SPIRAM);
-  if (!buf) { http.end(); return 0; }
+  if (!buf) { dlErr = "PSRAM alloc failed - check Tools>PSRAM=OPI!"; http.end(); return 0; }
   WiFiClient* s = http.getStreamPtr();
   size_t total = 0;
   unsigned long t0 = millis();
@@ -97,7 +100,7 @@ size_t downloadToPsram(const String& url, uint8_t** out) {
     }
   }
   http.end();
-  if (total < 100) { free(buf); return 0; }
+  if (total < 100) { dlErr = "short read " + String(total) + "B"; free(buf); return 0; }
   *out = buf;
   return total;
 }
@@ -186,7 +189,7 @@ void startSpeak(long id, const String& text, const String& audioUrl, int rate) {
   stopSpeak();  // 若上一句还在放,掐掉换新的
   pcmLen = downloadToPsram(audioUrl, &pcmBuf);
   if (pcmLen == 0) {
-    reportResult(id, false, "audio download failed");
+    reportResult(id, false, "audio download failed: " + dlErr);
     return;
   }
   // 不整段塞 —— loop 里一小碗一小碗喂(先搬进内部内存,喇叭吃得动)
