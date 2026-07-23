@@ -36,9 +36,16 @@ long lastCmdId = 0;
 
 uint8_t* pcmBuf = nullptr;
 size_t pcmLen = 0;
+size_t pcmPos = 0;          // 已喂给喇叭的字节数
 bool speaking = false;
 long speakingCmdId = 0;
+int speakRate = 16000;
 unsigned long lastMouthAt = 0;
+
+// 喇叭吃饭用的小碗: 两只轮换,内部内存,每碗 2048 个采样(128ms @16kHz)
+static const size_t CHUNK_SAMPLES = 2048;
+static int16_t chunkBuf[2][CHUNK_SAMPLES];
+static int chunkIdx = 0;
 
 // ── HTTP 小工具 ───────────────────────────────────────
 String httpGetText(const String& url, int timeoutMs) {
@@ -166,6 +173,7 @@ void stopSpeak() {
   M5.Speaker.stop();
   if (pcmBuf) { free(pcmBuf); pcmBuf = nullptr; }
   pcmLen = 0;
+  pcmPos = 0;
   speaking = false;
   avatar.setMouthOpenRatio(0);
 }
@@ -181,10 +189,25 @@ void startSpeak(long id, const String& text, const String& audioUrl, int rate) {
     reportResult(id, false, "audio download failed");
     return;
   }
-  // 整段 PCM 一次交给喇叭,DMA 自己慢慢放
-  M5.Speaker.playRaw((const int16_t*)pcmBuf, pcmLen / 2, (uint32_t)rate, false, 1, 0);
+  // 不整段塞 —— loop 里一小碗一小碗喂(先搬进内部内存,喇叭吃得动)
+  pcmPos = 0;
+  speakRate = rate;
   speaking = true;
   speakingCmdId = id;
+}
+
+// 有空位就盛一碗喂喇叭;返回 false 表示全部喂完且喇叭已吃完
+bool feedSpeaker() {
+  while (pcmPos < pcmLen && M5.Speaker.isPlaying(0) < 2) {  // 队列有空位
+    size_t remain = (pcmLen - pcmPos) / 2;                  // 剩余采样数
+    size_t n = remain < CHUNK_SAMPLES ? remain : CHUNK_SAMPLES;
+    if (n == 0) break;
+    memcpy(chunkBuf[chunkIdx], pcmBuf + pcmPos, n * 2);
+    M5.Speaker.playRaw(chunkBuf[chunkIdx], n, (uint32_t)speakRate, false, 1, 0);
+    chunkIdx ^= 1;
+    pcmPos += n * 2;
+  }
+  return (pcmPos < pcmLen) || M5.Speaker.isPlaying(0);
 }
 
 void handleCommand(JsonDocument& doc) {
@@ -272,17 +295,18 @@ void setup() {
 void loop() {
   M5.update();
 
-  // 说话中: 喇叭 DMA 自己在放,这里只负责让嘴动 + 等它放完
+  // 说话中: 一碗一碗喂喇叭 + 让嘴动,全部吃完再报作业
   if (speaking) {
-    if (!M5.Speaker.isPlaying(0)) {
+    if (!feedSpeaker()) {
       long id = speakingCmdId;
+      size_t played = pcmLen;
       stopSpeak();
-      reportResult(id, true, "spoken");
+      reportResult(id, true, "spoken " + String(played) + " bytes");
     } else if (millis() - lastMouthAt > 120) {
       avatar.setMouthOpenRatio(random(3, 10) / 10.0f);
       lastMouthAt = millis();
     }
-    delay(30);
+    delay(20);
     return;
   }
 
