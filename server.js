@@ -413,6 +413,22 @@ const HEARTBEAT_TOKEN = process.env.HEARTBEAT_TOKEN || '';
 // Bark 推送: 心跳发出的消息同步推到 iPhone 锁屏(装 Bark App,BARK_URL 填 App 里的推送地址)
 // 没配置或推送失败都静默跳过 —— 消息本身已落进会话,进门总能看见
 const BARK_URL = (process.env.BARK_URL || '').replace(/\/$/, '');
+
+// StackChan 联动: 心跳触发时,家里的身体也开口说那句话(没配置/身体没开机都静默跳过)
+// STACKCHAN_ANNOUNCE_URL 形如 https://stackchan.jiakeparents.top/announce?key=暗号
+const STACKCHAN_ANNOUNCE_URL = process.env.STACKCHAN_ANNOUNCE_URL || '';
+async function stackchanAnnounce(text) {
+  if (!STACKCHAN_ANNOUNCE_URL || !text) return false;
+  try {
+    const sep = STACKCHAN_ANNOUNCE_URL.includes('?') ? '&' : '?';
+    const resp = await fetch(STACKCHAN_ANNOUNCE_URL + sep + 'text=' + encodeURIComponent(String(text).slice(0, 300)),
+      { timeout: 15000 });
+    return resp.ok;
+  } catch (e) {
+    console.error('stackchan announce skipped:', e.message);
+    return false;
+  }
+}
 async function barkPush(body) {
   if (!BARK_URL || !body) return false;
   try {
@@ -572,7 +588,8 @@ app.all('/api/heartbeat', async (req, res) => {
       created_at: new Date().toISOString()
     });
     const pushed = await barkPush(text);
-    res.json({ fired: true, pushed, silenceH: +silenceH.toFixed(1), text });
+    const spoken = await stackchanAnnounce(text);
+    res.json({ fired: true, pushed, spoken, silenceH: +silenceH.toFixed(1), text });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

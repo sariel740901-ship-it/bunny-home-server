@@ -54,6 +54,7 @@ state = {
     "last_poll": 0.0,     # 身体最后一次来拉命令的时间
     "last_result": None,  # 身体最后一次汇报的执行结果
     "device": {},         # 身体自报的状态(电量等)
+    "pats": {"day": "", "count": 0, "pokes": 0, "last_at": 0.0},  # 摸头记录(按天)
 }
 _cond: asyncio.Condition | None = None
 _snap_event: asyncio.Event | None = None
@@ -257,6 +258,16 @@ async def stackchan_status() -> str:
         lines.append(f"上次执行: #{r.get('id')} {'成功' if r.get('ok') else '失败'} {r.get('detail', '')}")
     if state["device"]:
         lines.append("身体自报: " + json.dumps(state["device"], ensure_ascii=False))
+    pats = state["pats"]
+    today = time.strftime("%Y-%m-%d")
+    if pats["day"] == today and (pats["count"] or pats["pokes"]):
+        ago = int((time.time() - pats["last_at"]) / 60)
+        parts = []
+        if pats["count"]:
+            parts.append(f"被摸了 {pats['count']} 次头")
+        if pats["pokes"]:
+            parts.append(f"被戳了 {pats['pokes']} 下")
+        lines.append(f"今天{('、'.join(parts))}(最近一次 {ago} 分钟前)🥰")
     return "\n".join(lines)
 
 
@@ -323,6 +334,43 @@ async def snapshot(request):
     (SNAP_DIR / "latest.jpg").write_bytes(body)
     _get_snap_event().set()
     return JSONResponse({"ok": True})
+
+
+@mcp.custom_route("/event", methods=["POST"])
+async def event(request):
+    """身体上报的互动事件: {"type": "pat"|"poke"} —— 她摸了他,他应该知道。"""
+    if not _key_ok(request):
+        return Response("forbidden", status_code=403)
+    try:
+        data = json.loads((await request.body()).decode("utf-8"))
+    except Exception:
+        return Response("bad json", status_code=400)
+    etype = data.get("type", "")
+    today = time.strftime("%Y-%m-%d")
+    pats = state["pats"]
+    if pats["day"] != today:
+        state["pats"] = pats = {"day": today, "count": 0, "pokes": 0, "last_at": 0.0}
+    if etype == "pat":
+        pats["count"] += 1
+    elif etype == "poke":
+        pats["pokes"] += 1
+    pats["last_at"] = time.time()
+    return JSONResponse({"ok": True})
+
+
+@mcp.custom_route("/announce", methods=["GET", "POST"])
+async def announce(request):
+    """心跳联动入口: bunny 的心跳触发后带 text 来敲这里,身体就会开口说那句话。"""
+    if not _key_ok(request):
+        return Response("forbidden", status_code=403)
+    text = (request.query_params.get("text") or "").strip()[:300]
+    if not text:
+        return Response("text required", status_code=400)
+    audio = await _tts_to_url(text)
+    audio_path = "/audio/" + audio.rsplit("/", 1)[-1] if audio else ""
+    cmd = await _issue({"action": "speak", "text": text, "audio": audio,
+                        "audio_path": audio_path, "format": "pcm", "rate": 16000})
+    return JSONResponse({"ok": bool(audio), "id": cmd["id"], "body_online": _body_online()})
 
 
 @mcp.custom_route("/audio/{name}", methods=["GET"])
