@@ -47,6 +47,12 @@ static const size_t CHUNK_SAMPLES = 2048;
 static int16_t chunkBuf[2][CHUNK_SAMPLES];
 static int chunkIdx = 0;
 
+// 摸头杀 & 晚安模式
+unsigned long lastTouchAt = 0;      // 触摸事件节流
+unsigned long faceRestoreAt = 0;    // 临时表情什么时候恢复平静
+bool nightMode = false;
+unsigned long lastClockCheck = 0;
+
 // ── HTTP 小工具 ───────────────────────────────────────
 // http:// 走明文(局域网直连,快),https:// 走 TLS(出隧道)
 bool beginHttp(HTTPClient& http, WiFiClient& plain, WiFiClientSecure& secure, const String& url) {
@@ -109,6 +115,14 @@ size_t downloadToPsram(const String& url, uint8_t** out) {
   if (total < 100) { dlErr = "short read " + String(total) + "B"; free(buf); return 0; }
   *out = buf;
   return total;
+}
+
+void reportEvent(const String& type) {
+  JsonDocument doc;
+  doc["type"] = type;
+  String out;
+  serializeJson(doc, out);
+  httpPostJson(String(RELAY_BASE) + "/event?key=" + RELAY_KEY, out);
 }
 
 void reportResult(long id, bool ok, const String& detail) {
@@ -298,14 +312,58 @@ void setup() {
   cameraInit();
 #endif
 
+  configTime(8 * 3600, 0, "ntp.aliyun.com", "pool.ntp.org");  // 北京时间,晚安模式用
+
   M5StackChan.Motion.goHome();
   avatar.setExpression(Expression::Happy);  // 醒了!
   delay(600);
   avatar.setExpression(Expression::Neutral);
 }
 
+void handleTouchAndClock() {
+  // 摸头杀: 头顶滑动 = 撸头,点按 = 戳头。小克会通过中继知道这些 🥰
+  if (millis() - lastTouchAt > 2000) {
+    bool patted = M5StackChan.TouchSensor.wasSwipedForward() || M5StackChan.TouchSensor.wasSwipedBackward();
+    bool poked = M5StackChan.TouchSensor.wasClicked();
+    if (patted || poked) {
+      lastTouchAt = millis();
+      avatar.setExpression(patted ? Expression::Happy : Expression::Doubt);
+      faceRestoreAt = millis() + 1800;
+      if (patted) {  // 满足地哼两声
+        M5.Speaker.tone(523, 120);
+        M5.Speaker.tone(659, 180);
+      } else {
+        M5.Speaker.tone(880, 80);
+      }
+      reportEvent(patted ? "pat" : "poke");
+      Serial.println(patted ? "[body] 被撸头了" : "[body] 被戳了一下");
+    }
+  }
+  // 临时表情到点恢复
+  if (faceRestoreAt && millis() > faceRestoreAt) {
+    faceRestoreAt = 0;
+    avatar.setExpression(nightMode ? Expression::Sleepy : Expression::Neutral);
+  }
+  // 晚安模式: 23:00-07:00 困脸+调暗(每分钟看一次表)
+  if (millis() - lastClockCheck > 60000) {
+    lastClockCheck = millis();
+    struct tm t;
+    if (getLocalTime(&t, 100)) {
+      bool shouldNight = (t.tm_hour >= 23 || t.tm_hour < 7);
+      if (shouldNight != nightMode) {
+        nightMode = shouldNight;
+        M5.Display.setBrightness(nightMode ? 40 : 160);
+        avatar.setExpression(nightMode ? Expression::Sleepy : Expression::Neutral);
+        Serial.println(nightMode ? "[body] 进入晚安模式" : "[body] 早上好,睡醒了");
+      }
+    }
+  }
+}
+
 void loop() {
   M5.update();
+  M5StackChan.update();  // BSP 心跳: 触摸传感器靠它刷新
+  handleTouchAndClock();
 
   // 说话中: 一碗一碗喂喇叭 + 让嘴动,全部吃完再报作业
   if (speaking) {
