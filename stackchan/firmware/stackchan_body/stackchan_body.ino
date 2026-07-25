@@ -318,6 +318,8 @@ void setup() {
   avatar.setExpression(Expression::Happy);  // 醒了!
   delay(600);
   avatar.setExpression(Expression::Neutral);
+
+  xTaskCreatePinnedToCore(touchTask, "touch", 12288, nullptr, 1, nullptr, 1);
 }
 
 void handleTouchAndClock() {
@@ -360,10 +362,17 @@ void handleTouchAndClock() {
   }
 }
 
+// 触觉专线: 主循环大部分时间阻塞在长轮询上,摸头检测放独立任务里,50ms 摸一次传感器
+void touchTask(void*) {
+  for (;;) {
+    M5.update();
+    M5StackChan.update();
+    handleTouchAndClock();
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+}
+
 void loop() {
-  M5.update();
-  M5StackChan.update();  // BSP 心跳: 触摸传感器靠它刷新
-  handleTouchAndClock();
 
   // 说话中: 一碗一碗喂喇叭 + 让嘴动,全部吃完再报作业
   if (speaking) {
