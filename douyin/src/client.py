@@ -177,7 +177,11 @@ class DouYinApiClient:
             if method.upper() == "GET":
                 response = await client.get(url, headers=headers, timeout=10)
             else:
-                response = await client.post(url, headers=headers, timeout=10)
+                # POST 要把表单体真正发出去(点赞等写操作的参数在 body 里,签名也覆盖它)
+                response = await client.post(
+                    url, headers=headers, timeout=10,
+                    content=post_data.encode("utf-8") if post_data else None,
+                )
 
             if response.text == "" or response.text == "blocked":
                 raise DataFetchError("Request blocked or empty response")
@@ -209,19 +213,21 @@ class DouYinApiClient:
         aweme_id = "".join(ch for ch in str(aweme_id) if ch.isdigit())
         if not aweme_id:
             raise DataFetchError("aweme_id 需要是数字视频 ID")
-        params = {
+        # 点赞参数走 POST body(表单),不是 query
+        post_data = urllib.parse.urlencode({
             "aweme_id": aweme_id,
             "item_type": 0,
             "type": 0 if cancel else 1,
-        }
+        })
         # 点赞的 referer 指向该视频页,更像真人操作
         headers = self._get_headers(is_post=True)
         headers["Referer"] = f"https://www.douyin.com/video/{aweme_id}"
         result = await self._request(
             "POST",
             "/aweme/v1/web/commit/item/digg/",
-            params,
+            {},
             headers=headers,
+            post_data=post_data,
         )
         return result
 
