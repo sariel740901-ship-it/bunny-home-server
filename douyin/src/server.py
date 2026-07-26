@@ -50,6 +50,7 @@ mcp = FastMCP(
     - get_user_info: Get user profile information
     - get_user_posts: Get videos posted by a user
     - get_homefeed: Get recommended videos from home feed
+    - like_video: 给视频点赞/取消(唯一的写操作,克制使用)
 
     Configuration:
     - Place your Douyin cookies in cookies.txt file in the project root directory
@@ -89,6 +90,23 @@ async def check_login_status() -> dict:
         return {"logged_in": is_logged_in}
     except Exception as e:
         return {"logged_in": False, "error": str(e)}
+
+
+@mcp.tool
+async def like_video(aweme_id: str, cancel: bool = False) -> dict:
+    """给一个抖音视频点赞(cancel=True 则取消点赞)。aweme_id 是视频的数字 ID(从 search_videos / get_homefeed 的结果里拿)。这是写操作,请在真的想给她/某条内容表达喜欢时用,不要批量刷。"""
+    client = get_client()
+    try:
+        result = await client.like_video(aweme_id, cancel=cancel)
+        ok = result.get("status_code") == 0
+        return {
+            "ok": ok,
+            "action": "取消点赞" if cancel else "点赞",
+            "aweme_id": "".join(ch for ch in str(aweme_id) if ch.isdigit()),
+            "detail": "成功 ❤️" if ok else f"抖音返回: {result.get('status_msg') or result}",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @mcp.tool

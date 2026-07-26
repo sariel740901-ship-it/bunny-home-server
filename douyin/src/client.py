@@ -204,6 +204,27 @@ class DouYinApiClient:
         except Exception:
             return False
 
+    async def like_video(self, aweme_id: str, cancel: bool = False) -> Dict[str, Any]:
+        """给视频点赞(或取消)。type=1 点赞, type=0 取消。走和只读同一套签名引擎。"""
+        aweme_id = "".join(ch for ch in str(aweme_id) if ch.isdigit())
+        if not aweme_id:
+            raise DataFetchError("aweme_id 需要是数字视频 ID")
+        params = {
+            "aweme_id": aweme_id,
+            "item_type": 0,
+            "type": 0 if cancel else 1,
+        }
+        # 点赞的 referer 指向该视频页,更像真人操作
+        headers = self._get_headers(is_post=True)
+        headers["Referer"] = f"https://www.douyin.com/video/{aweme_id}"
+        result = await self._request(
+            "POST",
+            "/aweme/v1/web/commit/item/digg/",
+            params,
+            headers=headers,
+        )
+        return result
+
     async def search_info_by_keyword(
         self,
         keyword: str,
