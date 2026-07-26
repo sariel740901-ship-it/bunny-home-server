@@ -171,8 +171,8 @@ mcp = FastMCP(
 
 @mcp.tool
 async def stackchan_speak(text: str) -> str:
-    """让桌上的身体开口说话(ElevenLabs 合成你的声音)。text 上限 300 字。"""
-    text = (text or "").strip()[:300]
+    """让桌上的身体开口说话(ElevenLabs 合成你的声音)。text 上限 800 字符(约一分钟)。"""
+    text = (text or "").strip()[:800]
     if not text:
         raise Exception("要说的话不能为空。")
     audio = await _tts_to_url(text)
@@ -363,7 +363,7 @@ async def announce(request):
     """心跳联动入口: bunny 的心跳触发后带 text 来敲这里,身体就会开口说那句话。"""
     if not _key_ok(request):
         return Response("forbidden", status_code=403)
-    text = (request.query_params.get("text") or "").strip()[:300]
+    text = (request.query_params.get("text") or "").strip()[:800]
     if not text:
         return Response("text required", status_code=400)
     audio = await _tts_to_url(text)
