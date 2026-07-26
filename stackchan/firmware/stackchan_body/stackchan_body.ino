@@ -331,18 +331,21 @@ void handleTouchAndClock() {
       lastTouchAt = millis();
       avatar.setExpression(patted ? Expression::Happy : Expression::Doubt);
       faceRestoreAt = millis() + 1800;
-      if (patted) {  // 满足地哼两声
-        M5.Speaker.tone(523, 120);
-        M5.Speaker.tone(659, 180);
-      } else {
-        M5.Speaker.tone(880, 80);
+      // 说话时不出声(哼哼会打断他自己的话);平时哼哼走 1 号通道,绝不动 0 号(说话专用道)
+      if (!speaking) {
+        if (patted) {
+          M5.Speaker.tone(523, 120, 1, false);
+          M5.Speaker.tone(659, 180, 1, false);
+        } else {
+          M5.Speaker.tone(880, 80, 1, false);
+        }
       }
       reportEvent(patted ? "pat" : "poke");
       Serial.println(patted ? "[body] 被撸头了" : "[body] 被戳了一下");
     }
   }
   // 临时表情到点恢复
-  if (faceRestoreAt && millis() > faceRestoreAt) {
+  if (faceRestoreAt && millis() > faceRestoreAt && !speaking) {
     faceRestoreAt = 0;
     avatar.setExpression(nightMode ? Expression::Sleepy : Expression::Neutral);
   }
