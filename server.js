@@ -421,7 +421,7 @@ async function stackchanAnnounce(text) {
   if (!STACKCHAN_ANNOUNCE_URL || !text) return false;
   try {
     const sep = STACKCHAN_ANNOUNCE_URL.includes('?') ? '&' : '?';
-    const resp = await fetch(STACKCHAN_ANNOUNCE_URL + sep + 'text=' + encodeURIComponent(String(text).slice(0, 300)),
+    const resp = await fetch(STACKCHAN_ANNOUNCE_URL + sep + 'text=' + encodeURIComponent(String(text).slice(0, 800)),
       { timeout: 15000 });
     return resp.ok;
   } catch (e) {
