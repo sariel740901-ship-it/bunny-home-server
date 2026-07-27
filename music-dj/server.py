@@ -15,7 +15,7 @@ def netease_request(url, data=None):
         data = data.encode()
     req = urllib.request.Request(url, data=data, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=15) as r:
             return json.loads(r.read().decode())
     except Exception as e:
         return {"code": -1, "error": str(e)}
@@ -64,7 +64,12 @@ def get_lyrics(query):
         song_id = str(songs[0].get('id'))
         artist = ', '.join([a.get('name', '') for a in songs[0].get('artists', [])])
         label = songs[0].get('name', '') + ' - ' + artist
-    resp = netease_request('https://music.163.com/api/song/lyric?id=' + song_id + '&lv=1&tv=-1')
+    # 先用更稳的 v1 接口(带 os=pc),失败/超时再退回老接口;别把超时伪装成"纯音乐"
+    resp = netease_request('https://music.163.com/api/song/lyric/v1?id=' + song_id + '&lv=1&kv=1&tv=1&os=pc')
+    if resp.get('code') == -1:
+        resp = netease_request('https://music.163.com/api/song/lyric?id=' + song_id + '&lv=1&tv=-1')
+    if resp.get('code') == -1:
+        return "歌词获取失败(网易云接口超时或没响应): " + str(resp.get('error', '')) + " —— 稍后再试一次,或确认 VPN 是规则模式没劫持国内流量。"
     raw = (resp.get('lrc') or {}).get('lyric', '')
     if not raw:
         return "No lyrics available for " + label + " (可能是纯音乐)"
