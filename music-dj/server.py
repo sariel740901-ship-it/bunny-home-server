@@ -34,10 +34,21 @@ def get_csrf():
             return part.split('=', 1)[1]
     return ''
 
+def search_songs(query, limit=5):
+    """搜歌,返回 (songs, error)。超时/接口报错走 cloudsearch 兜底再退回老接口,并如实区分'超时'和'没结果'。"""
+    for path in ('https://music.163.com/api/cloudsearch/pc',
+                 'https://music.163.com/api/search/get'):
+        resp = netease_request(path + '?s=' + urllib.parse.quote(str(query)) + '&type=1&limit=' + str(limit))
+        if resp.get('code') == -1:
+            continue  # 这个接口超时了,换下一个
+        songs = resp.get('result', {}).get('songs', [])
+        return songs, None
+    return [], "搜索超时(网易云接口没响应)—— 稍后再试,或确认 VPN 是规则模式没劫持国内流量。"
+
 def play_music(query, note=None):
-    url = 'https://music.163.com/api/search/get?s=' + urllib.parse.quote(query) + '&type=1&limit=5'
-    resp = netease_request(url)
-    songs = resp.get('result', {}).get('songs', [])
+    songs, err = search_songs(query, limit=5)
+    if err:
+        return err
     if not songs:
         return "No results for '" + query + "'"
     s = songs[0]
@@ -57,8 +68,9 @@ def get_lyrics(query):
     if str(query).isdigit():
         song_id = str(query)
     else:
-        url = 'https://music.163.com/api/search/get?s=' + urllib.parse.quote(str(query)) + '&type=1&limit=1'
-        songs = netease_request(url).get('result', {}).get('songs', [])
+        songs, err = search_songs(query, limit=1)
+        if err:
+            return err
         if not songs:
             return "No song found for '" + str(query) + "'"
         song_id = str(songs[0].get('id'))
