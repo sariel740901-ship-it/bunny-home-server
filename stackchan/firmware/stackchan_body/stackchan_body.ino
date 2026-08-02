@@ -155,29 +155,39 @@ void cameraInit() {
   cfg.fb_location = CAMERA_FB_IN_PSRAM;
   cfg.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
   M5.In_I2C.release();  // 摄像头和内部 I2C 共线,官方库同款操作
-  cameraReady = (esp_camera_init(&cfg) == ESP_OK);
+  esp_err_t err = esp_camera_init(&cfg);
+  cameraReady = (err == ESP_OK);
+  Serial.println("[cam] esp_camera_init: " + String(cameraReady ? "OK" : "FAILED err=0x") + (cameraReady ? "" : String(err, HEX)));
 }
 
+String snapErr = "";
 bool takeSnapshot() {
-  if (!cameraReady) return false;
+  snapErr = "";
+  if (!cameraReady) { snapErr = "camera not initialized (init failed at boot)"; return false; }
   camera_fb_t* fb = esp_camera_fb_get();
-  if (!fb) return false;
+  if (!fb) { snapErr = "no frame from camera (fb_get null)"; return false; }
   uint8_t* jpg = nullptr;
   size_t jpgLen = 0;
   bool ok = frame2jpg(fb, 80, &jpg, &jpgLen);
   esp_camera_fb_return(fb);
-  if (!ok || !jpg) return false;
-  WiFiClientSecure client;
-  client.setInsecure();
+  if (!ok || !jpg) { snapErr = "frame2jpg failed"; return false; }
+  Serial.println("[cam] captured " + String(jpgLen) + " bytes, uploading...");
+  // 走和 speak 同一套 http 助手 —— 局域网 http:// 也能传(之前硬写 https 传不回来)
+  WiFiClient plain; WiFiClientSecure secure;
   HTTPClient http;
   http.setTimeout(15000);
   bool sent = false;
-  if (http.begin(client, String(RELAY_BASE) + "/snapshot?key=" + RELAY_KEY)) {
+  if (beginHttp(http, plain, secure, String(RELAY_BASE) + "/snapshot?key=" + RELAY_KEY)) {
     http.addHeader("Content-Type", "image/jpeg");
-    sent = (http.POST(jpg, jpgLen) == 200);
+    int code = http.POST(jpg, jpgLen);
+    sent = (code == 200);
+    if (!sent) snapErr = "upload http " + String(code);
     http.end();
+  } else {
+    snapErr = "upload http begin failed";
   }
   free(jpg);
+  Serial.println("[cam] upload " + String(sent ? "ok" : "FAILED: " + snapErr));
   return sent;
 }
 #endif
@@ -274,7 +284,7 @@ void handleCommand(JsonDocument& doc) {
   } else if (action == "snapshot") {
 #if ENABLE_CAMERA
     bool ok = takeSnapshot();
-    reportResult(id, ok, ok ? "snapshot uploaded" : "snapshot failed");
+    reportResult(id, ok, ok ? "snapshot uploaded" : ("snapshot failed: " + snapErr));
 #else
     reportResult(id, false, "camera disabled in firmware (config.h ENABLE_CAMERA)");
 #endif
