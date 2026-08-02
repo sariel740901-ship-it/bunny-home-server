@@ -208,6 +208,30 @@ class DouYinApiClient:
         except Exception:
             return False
 
+    async def _fetch_csrf_token(self, uri: str) -> str:
+        """写接口(点赞等)预检:拿一个真实的 x-secsdk-csrf-token。
+        DOWNGRADE 占位值抖音已越来越多拒绝,拒绝时返回'未登录'。失败返回空串。"""
+        await self._init_verify_params()
+        all_params = {
+            **self.COMMON_PARAMS,
+            "webid": self.verify_params.webid,
+            "msToken": self.verify_params.ms_token,
+        }
+        url = f"{self.BASE_URL}{uri}?{urllib.parse.urlencode(all_params)}"
+        headers = self._get_headers(is_post=True)
+        headers["x-secsdk-csrf-request"] = "1"
+        headers["x-secsdk-csrf-version"] = "1.2.22"
+        try:
+            async with httpx.AsyncClient(proxy=self.proxy) as client:
+                resp = await client.post(url, headers=headers, timeout=10)
+                raw = resp.headers.get("x-ware-csrf-token", "")
+                parts = raw.split(",")
+                if len(parts) >= 2 and parts[1]:
+                    return parts[1]
+        except Exception:
+            pass
+        return ""
+
     async def like_video(self, aweme_id: str, cancel: bool = False) -> Dict[str, Any]:
         """给视频点赞(或取消)。type=1 点赞, type=0 取消。走和只读同一套签名引擎。"""
         aweme_id = "".join(ch for ch in str(aweme_id) if ch.isdigit())
@@ -222,6 +246,10 @@ class DouYinApiClient:
         # 点赞的 referer 指向该视频页,更像真人操作
         headers = self._get_headers(is_post=True)
         headers["Referer"] = f"https://www.douyin.com/video/{aweme_id}"
+        # 先握手拿真实 csrf token —— 没有它抖音会当"未登录"拒掉写操作
+        token = await self._fetch_csrf_token("/aweme/v1/web/commit/item/digg/")
+        if token:
+            headers["X-Secsdk-Csrf-Token"] = token
         result = await self._request(
             "POST",
             "/aweme/v1/web/commit/item/digg/",
