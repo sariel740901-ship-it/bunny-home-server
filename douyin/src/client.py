@@ -90,6 +90,14 @@ class DouYinApiClient:
         if self.verify_params is None:
             self.verify_params = await get_common_verify_params(self.user_agent)
 
+    def _cookie_value(self, key: str) -> str:
+        """从 cookie 串里取某个字段的值(如 msToken / __csrf),取不到返回空串。"""
+        for part in (self.cookies or "").split(";"):
+            part = part.strip()
+            if part.startswith(key + "="):
+                return part.split("=", 1)[1]
+        return ""
+
     def _get_headers(self, is_post: bool = False, remove_origin: bool = False) -> Dict[str, str]:
         """Get request headers."""
         headers = {
@@ -152,12 +160,16 @@ class DouYinApiClient:
         """
         await self._init_verify_params()
 
+        # 优先用 cookie 里的真 msToken(浏览器抓来的是活的);上游生成器的 strData 被截断,
+        # 只能造假 token,读接口能蒙混,但点赞等写接口严格校验它 → "用户未登录"
+        ms_token = self._cookie_value("msToken") or self.verify_params.ms_token
+
         # Merge common params and verify params
         all_params = {
             **self.COMMON_PARAMS,
             **params,
             "webid": self.verify_params.webid,
-            "msToken": self.verify_params.ms_token,
+            "msToken": ms_token,
         }
 
         query_string = urllib.parse.urlencode(all_params)
