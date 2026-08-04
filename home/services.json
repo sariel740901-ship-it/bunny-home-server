@@ -1,0 +1,9 @@
+[
+  {"name": "voice-bar",   "title": "语音条",     "dir": "voice-bar",   "cmd": ["server.py"],          "port": 8000, "enabled": true},
+  {"name": "now-playing", "title": "耳朵",       "dir": "now-playing", "cmd": ["now_playing_mcp.py"], "port": 8010, "enabled": true},
+  {"name": "stackchan",   "title": "身体中枢",   "dir": "stackchan",   "cmd": ["server.py"],          "port": 8011, "enabled": true},
+  {"name": "douyin",      "title": "抖音街角",   "dir": "douyin",      "cmd": ["main.py"],            "port": 8020, "enabled": true},
+  {"name": "darkroom",    "title": "暗房",       "dir": "darkroom",    "cmd": ["server.py"],          "port": 8030, "enabled": true},
+  {"name": "presence",    "title": "时间的眼睛", "dir": "presence",    "cmd": ["server.py"],          "port": 8040, "enabled": true},
+  {"name": "music-dj",    "title": "DJ台",       "dir": "music-dj",    "cmd": ["server.py"],          "port": 3456, "enabled": true}
+]
