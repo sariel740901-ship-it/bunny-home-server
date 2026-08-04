@@ -128,6 +128,10 @@ class Child:
         env = dict(os.environ)
         env.update(_read_env_file(d))
         env.setdefault("PYTHONUNBUFFERED", "1")
+        # 输出进的是日志文件不是控制台,Windows 会退回 GBK,
+        # 服务打印 ✓ 之类的字符就当场崩 —— 强制 UTF-8
+        env["PYTHONIOENCODING"] = "utf-8"
+        env.setdefault("PYTHONUTF8", "1")
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         self.proc = subprocess.Popen(
             [sys.executable, *self.spec["cmd"]],
