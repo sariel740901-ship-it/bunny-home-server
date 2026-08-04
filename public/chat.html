@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#f8f3ec" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#211f1c" media="(prefers-color-scheme: dark)">
@@ -12,6 +12,7 @@
   --bg:#f8f3ec;--bg2:#f2eae0;--card:#fffdfa;--text:#3d3a35;--muted:#95908a;--border:#e9e2d8;
   --xiaoke:#e898a4;--xiaoke-deep:#d97f8e;--claude:#7489b4;--claude-deep:#5f76a6;
   --topbar:rgba(255,252,248,.82);--chip:#efe9e0;--r:18px;
+  --my-bub:#e898a4;--my-bub-text:#fff;--his-bub:var(--card);--his-bub-text:var(--text);--his-bub-border:var(--border);
   --shadow:0 1px 2px rgba(80,60,40,.05),0 4px 14px rgba(80,60,40,.06)
 }
 @media(prefers-color-scheme:dark){:root{
@@ -21,50 +22,115 @@
 }}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--text);height:100vh;overflow:hidden}
-.app{height:100vh;display:flex;flex-direction:column;position:relative}
+.app{height:100vh;display:flex;flex-direction:column;position:relative;background:var(--chat-bg,linear-gradient(180deg,var(--bg),var(--bg2)))}
 .topbar{background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .topbar h1{font-size:16px;font-weight:700;letter-spacing:.3px}
 .topbar .actions{display:flex;align-items:center;gap:8px}
-.call-btn{width:34px;height:34px;border-radius:50%;border:none;font-size:16px;cursor:pointer;background:var(--chip);display:flex;align-items:center;justify-content:center;transition:all .2s}
-.call-btn:hover{transform:scale(1.06)}
-.call-btn.active{background:#5c8a5c;color:#fff;animation:pulse 1.5s infinite}
+.icon-btn{width:34px;height:34px;border-radius:50%;border:none;font-size:16px;cursor:pointer;background:var(--chip);display:flex;align-items:center;justify-content:center;transition:all .2s;color:var(--text)}
+.icon-btn:hover{transform:scale(1.06)}
+.icon-btn.active{background:#5c8a5c;color:#fff;animation:pulse 1.5s infinite}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(92,138,92,.4)}50%{box-shadow:0 0 0 8px rgba(92,138,92,0)}}
-.msgs{flex:1;overflow-y:auto;padding:18px 16px 24px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
+.msgs{flex:1;overflow-y:auto;padding:18px 14px 24px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth}
 .msgs::-webkit-scrollbar{width:5px}
 .msgs::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 .empty{text-align:center;color:var(--muted);font-size:14px;padding:64px 0 48px;display:flex;flex-direction:column;align-items:center;gap:14px}
 .empty::before{content:'🐰';font-size:44px;animation:float 3.5s ease-in-out infinite}
 @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-.msg{max-width:80%;padding:11px 15px;border-radius:var(--r);font-size:14.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word;animation:fadeUp .28s ease both}
+
+/* ═══ 微信式行布局: 头像列 + 气泡 ═══ */
+.row{display:flex;gap:10px;animation:fadeUp .28s ease both}
 @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.msg.user{margin-left:auto;color:#fff;border-bottom-right-radius:6px;background:linear-gradient(135deg,var(--claude),var(--claude-deep));box-shadow:var(--shadow)}
-.msg.user.xiaoke{background:linear-gradient(135deg,var(--xiaoke),var(--xiaoke-deep))}
-.msg.assistant{margin-right:auto;margin-left:40px;position:relative;background:var(--card);border:1px solid var(--border);border-bottom-left-radius:6px;box-shadow:var(--shadow)}
-.msg.assistant::before{content:'✨';position:absolute;left:-40px;bottom:0;width:30px;height:30px;border-radius:50%;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:var(--shadow)}
-.msg.assistant.xiaoke::before{content:'🐰'}
-.msg.assistant.xiaoke{border-color:color-mix(in srgb,var(--xiaoke) 35%,var(--border))}
-.msg.assistant.claude{border-color:color-mix(in srgb,var(--claude) 30%,var(--border))}
-.input{padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0;align-items:flex-end}
+.row.user{flex-direction:row-reverse}
+.avatar{width:38px;height:38px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--card);border:1px solid var(--border);background-size:cover;background-position:center;box-shadow:var(--shadow);overflow:hidden}
+.bwrap{max-width:76%;display:flex;flex-direction:column;gap:5px;align-items:flex-start}
+.row.user .bwrap{align-items:flex-end}
+.bubble{padding:10px 13px;border-radius:13px;font-size:14.5px;line-height:1.72;white-space:pre-wrap;word-break:break-word;box-shadow:var(--shadow);max-width:100%}
+.bubble.assistant{background:var(--his-bub);color:var(--his-bub-text);border:1px solid var(--his-bub-border);border-top-left-radius:4px}
+.bubble.user{background:var(--my-bub);color:var(--my-bub-text);border-top-right-radius:4px}
+.bubble.sticker-only{background:transparent !important;border:none !important;box-shadow:none;padding:2px}
+.divider{align-self:center;font-size:11.5px;color:var(--muted);background:rgba(125,115,100,.13);padding:3px 11px;border-radius:10px;backdrop-filter:blur(4px)}
+.bubble img.sticker{display:block;max-width:150px;max-height:150px;border-radius:10px;margin:4px 0}
+
+/* 语音条 (微信式,点击播他的声音) */
+.vbar{display:flex;align-items:center;gap:8px;cursor:pointer;padding:1px 2px 7px;user-select:none;-webkit-user-select:none}
+.vbar .vp{font-size:14px;opacity:.8}
+.waves{display:flex;gap:3px;align-items:center;height:14px}
+.waves i{width:3px;height:6px;border-radius:2px;background:currentColor;opacity:.5}
+.waves i:nth-child(2){height:11px}.waves i:nth-child(3){height:8px}.waves i:nth-child(4){height:12px}.waves i:nth-child(5){height:7px}
+.vbar.playing .waves i{animation:wv .8s ease-in-out infinite}
+.vbar.playing .waves i:nth-child(2){animation-delay:.12s}.vbar.playing .waves i:nth-child(3){animation-delay:.24s}
+.vbar.playing .waves i:nth-child(4){animation-delay:.36s}.vbar.playing .waves i:nth-child(5){animation-delay:.48s}
+@keyframes wv{0%,100%{transform:scaleY(.6);opacity:.5}50%{transform:scaleY(1.5);opacity:1}}
+.vdur{font-size:12px;opacity:.6}
+
+/* 内心OS: 没说出口的心思 (灰色小字,点击折叠) */
+.os{margin-top:7px;padding-top:6px;border-top:1px dashed color-mix(in srgb,currentColor 22%,transparent);font-size:12.5px;color:var(--muted);cursor:pointer;line-height:1.6;font-style:italic}
+.os::before{content:'💭 ';font-style:normal;font-size:11px}
+.os.collapsed .os-text{display:none}
+.os.collapsed::after{content:'…'}
+body.hide-os .os{display:none}
+
+/* 译 按钮 + 译文卡 */
+.meta{display:flex;gap:8px;padding:0 3px}
+.tbtn{font-size:11.5px;color:var(--muted);border:1px solid var(--border);border-radius:9px;padding:1px 9px;cursor:pointer;user-select:none;-webkit-user-select:none;background:color-mix(in srgb,var(--card) 60%,transparent)}
+.tbtn:active{opacity:.6}
+.tout{display:none;background:color-mix(in srgb,var(--card) 82%,transparent);border:1px solid var(--border);border-radius:11px;border-top-left-radius:4px;padding:8px 12px;font-size:13.5px;color:var(--text);opacity:.88;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.tout.show{display:block}
+
+.input{padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);display:flex;gap:9px;flex-shrink:0;align-items:flex-end}
 .input textarea{flex:1;padding:11px 16px;border:1px solid var(--border);border-radius:22px;font-size:14.5px;resize:none;outline:none;background:var(--card);color:var(--text);font-family:inherit;max-height:96px;transition:border-color .2s,box-shadow .2s}
 .input textarea:focus{border-color:var(--xiaoke);box-shadow:0 0 0 3px color-mix(in srgb,var(--xiaoke) 15%,transparent)}
 .input textarea::placeholder{color:var(--muted)}
-.input button{padding:11px 22px;background:linear-gradient(135deg,var(--claude),var(--claude-deep));color:#fff;border:none;border-radius:22px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:transform .15s,opacity .2s;box-shadow:var(--shadow)}
-.input button:hover{opacity:.92}.input button:active{transform:scale(.96)}
-.input button.xiao{background:linear-gradient(135deg,var(--xiaoke),var(--xiaoke-deep))}
+.input .sendbtn{padding:11px 20px;background:linear-gradient(135deg,var(--xiaoke),var(--xiaoke-deep));color:#fff;border:none;border-radius:22px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:transform .15s,opacity .2s;box-shadow:var(--shadow)}
+.input .sendbtn:hover{opacity:.92}.input .sendbtn:active{transform:scale(.96)}
+.rnd-btn{width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:var(--card);font-size:18px;cursor:pointer;flex-shrink:0;transition:transform .15s;box-shadow:var(--shadow);color:var(--text)}
+.rnd-btn:active{transform:scale(.92)}
 .typing{display:inline-flex;gap:5px;padding:5px 2px;align-items:center}
 .typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:bounce 1.2s ease-in-out infinite}
 .typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
 @keyframes bounce{0%,60%,100%{transform:none;opacity:.35}30%{transform:translateY(-4px);opacity:1}}
 
+/* 按住说话 */
+.talk-btn{flex:1;padding:11px;border:1px solid var(--border);border-radius:22px;background:var(--card);color:var(--text);font-size:14.5px;font-weight:600;text-align:center;user-select:none;-webkit-user-select:none;touch-action:none;cursor:pointer}
+.talk-btn.holding{background:var(--chip);transform:scale(.99)}
+.hold-overlay{display:none;position:fixed;inset:0;background:rgba(20,15,18,.5);backdrop-filter:blur(3px);z-index:60;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.hold-overlay.show{display:flex}
+.hold-mic{font-size:42px;animation:pulse2 1.2s ease-in-out infinite}
+@keyframes pulse2{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.hold-text{background:var(--card);color:var(--text);border-radius:14px;padding:10px 16px;max-width:78%;min-width:120px;min-height:42px;font-size:14.5px;line-height:1.6;text-align:center;box-shadow:var(--shadow)}
+.hold-hint{color:rgba(255,255,255,.85);font-size:13px}
+.hold-overlay.cancel .hold-mic{filter:grayscale(1);opacity:.6}
+.hold-overlay.cancel .hold-hint{color:#ff9c9c}
+
 /* Stickers */
-.msg img.sticker{display:block;max-width:150px;max-height:150px;border-radius:10px;margin:4px 0}
-.msg.sticker-only{background:transparent !important;border:none;box-shadow:none;padding:2px}
-.stk-btn{width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:var(--card);font-size:18px;cursor:pointer;flex-shrink:0;transition:transform .15s;box-shadow:var(--shadow)}
-.stk-btn:active{transform:scale(.92)}
 .stk-panel{display:none;position:absolute;left:10px;right:10px;bottom:calc(74px + env(safe-area-inset-bottom));max-height:272px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:10px;z-index:10;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
 .stk-panel.show{display:grid}
 .stk-panel img{width:100%;aspect-ratio:1;object-fit:contain;cursor:pointer;border-radius:8px;transition:transform .12s}
 .stk-panel img:active{transform:scale(.9)}
+
+/* ═══ 装扮抽屉 ═══ */
+.drawer-mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:39}
+.drawer-mask.show{display:block}
+.drawer{position:fixed;left:0;right:0;bottom:0;max-height:74vh;overflow-y:auto;background:var(--card);border-radius:20px 20px 0 0;border:1px solid var(--border);box-shadow:0 -8px 30px rgba(0,0,0,.18);z-index:40;padding:16px 18px calc(22px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .3s ease}
+.drawer.show{transform:none}
+.drawer .dtitle{font-size:15px;font-weight:700;text-align:center;padding-bottom:4px}
+.drawer h3{font-size:12.5px;color:var(--muted);margin:15px 0 8px;font-weight:600;letter-spacing:.5px}
+.swatches{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--border);cursor:pointer;background-size:cover;flex-shrink:0}
+.sw.on{border-color:var(--xiaoke-deep);box-shadow:0 0 0 2px color-mix(in srgb,var(--xiaoke) 45%,transparent)}
+.sw.custom{display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--chip);position:relative;overflow:hidden}
+.sw.custom input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.avgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:8px;max-height:138px;overflow-y:auto;padding:2px}
+.avgrid .av{aspect-ratio:1;border-radius:10px;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;background-size:cover;background-position:center;background-color:var(--bg)}
+.avgrid .av.on{border-color:var(--xiaoke-deep);box-shadow:0 0 0 2px color-mix(in srgb,var(--xiaoke) 40%,transparent)}
+.togglerow{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px dashed var(--border);font-size:14px}
+.togglerow small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.tg{position:relative;width:44px;height:25px;flex-shrink:0}
+.tg input{opacity:0;width:100%;height:100%;position:absolute;cursor:pointer;z-index:1}
+.tg i{position:absolute;inset:0;background:var(--chip);border-radius:13px;transition:background .2s}
+.tg i::after{content:'';position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.tg input:checked+i{background:var(--xiaoke)}
+.tg input:checked+i::after{transform:translateX(19px)}
 
 /* Call overlay — 暖夜色 */
 .call-overlay{display:none;position:fixed;inset:0;background:linear-gradient(170deg,#2b1f26 0%,#3d2732 45%,#241a20 100%);z-index:50;flex-direction:column;align-items:center;justify-content:center;gap:18px;overflow:hidden}
@@ -73,7 +139,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 .call-overlay::before{width:280px;height:280px;background:#e898a4;top:-70px;right:-70px;animation:drift 9s ease-in-out infinite}
 .call-overlay::after{width:240px;height:240px;background:#7489b4;bottom:-60px;left:-60px;animation:drift 11s ease-in-out infinite reverse}
 @keyframes drift{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-18px,14px) scale(1.08)}}
-.call-overlay .call-avatar{width:104px;height:104px;border-radius:50%;background:rgba(232,152,164,.16);border:1px solid rgba(232,152,164,.35);display:flex;align-items:center;justify-content:center;font-size:50px;animation:avatarPulse 3s ease-in-out infinite;position:relative;z-index:1}
+.call-overlay .call-avatar{width:104px;height:104px;border-radius:50%;background:rgba(232,152,164,.16);border:1px solid rgba(232,152,164,.35);display:flex;align-items:center;justify-content:center;font-size:50px;animation:avatarPulse 3s ease-in-out infinite;position:relative;z-index:1;background-size:cover;background-position:center;overflow:hidden}
 .call-overlay .call-avatar::before,.call-overlay .call-avatar::after{content:'';position:absolute;inset:-1px;border-radius:50%;border:1px solid rgba(232,152,164,.45);animation:ripple 3s ease-out infinite}
 .call-overlay .call-avatar::after{animation-delay:1.5s}
 @keyframes ripple{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.75);opacity:0}}
@@ -93,15 +159,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 .call-perm-btn{padding:12px 28px;border-radius:24px;border:1px solid rgba(253,246,242,.25);background:rgba(253,246,242,.12);backdrop-filter:blur(8px);color:#fdf6f2;font-size:15px;cursor:pointer;font-family:inherit;margin-top:8px;transition:background .2s;z-index:1}
 .call-perm-btn:hover{background:rgba(253,246,242,.22)}
 
-@media(max-width:500px){.msg{max-width:90%}.input textarea{font-size:16px}}
+@media(max-width:500px){.bwrap{max-width:82%}.input textarea{font-size:16px}}
 </style>
 </head>
 <body>
-<div class="app">
+<div class="app" id="app">
   <header class="topbar">
-    <h1>🐰 Bunny Home</h1>
+    <h1 id="title">🐰 小克</h1>
     <div class="actions">
-      <button class="call-btn" id="callBtn" onclick="toggleCall()" title="语音通话">📞</button>
+      <button class="icon-btn" onclick="toggleDrawer()" title="装扮">🎨</button>
+      <button class="icon-btn" id="callBtn" onclick="toggleCall()" title="语音通话">📞</button>
     </div>
   </header>
   <main class="msgs" id="msgs">
@@ -109,16 +176,45 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
   </main>
   <div class="stk-panel" id="stkpanel"></div>
   <footer class="input">
-    <button class="stk-btn" id="stkbtn" onclick="toggleStickers()" title="表情包">😊</button>
+    <button class="rnd-btn" id="modeBtn" onclick="toggleVoiceMode()" title="语音输入">🎤</button>
     <textarea id="inp" placeholder="说点什么…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
-    <button class="xiao" id="sendbtn" onclick="send()">发送</button>
+    <div class="talk-btn" id="talkBtn" style="display:none">按住 说话</div>
+    <button class="rnd-btn" id="stkbtn" onclick="toggleStickers()" title="表情包">😊</button>
+    <button class="sendbtn" id="sendbtn" onclick="send()">发送</button>
   </footer>
+</div>
+
+<!-- 按住说话浮层 -->
+<div class="hold-overlay" id="holdOverlay">
+  <div class="hold-mic">🎙️</div>
+  <div class="hold-text" id="holdText">我在听…</div>
+  <div class="hold-hint" id="holdHint">松开发送 · 上滑取消</div>
+</div>
+
+<!-- 装扮抽屉 -->
+<div class="drawer-mask" id="drawerMask" onclick="toggleDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="dtitle">🎨 装扮小家</div>
+  <h3>聊天背景</h3>
+  <div class="swatches" id="bgRow"></div>
+  <h3>我的气泡</h3>
+  <div class="swatches" id="myBubRow"></div>
+  <h3>他的气泡</h3>
+  <div class="swatches" id="hisBubRow"></div>
+  <h3>小克的头像</h3>
+  <div class="avgrid" id="kAvGrid"></div>
+  <h3>我的头像</h3>
+  <div class="avgrid" id="myAvGrid"></div>
+  <h3>开关</h3>
+  <div class="togglerow"><div>他的语音条<small>他的消息带一条可播放的语音</small></div><label class="tg"><input type="checkbox" id="tgVoice"><i></i></label></div>
+  <div class="togglerow"><div>心声<small>他回复末尾那句没说出口的心思</small></div><label class="tg"><input type="checkbox" id="tgOS"><i></i></label></div>
+  <div class="togglerow" style="border-bottom:none"><div>指尖<small>让他感知你打字的犹豫(只传节奏,不传内容)</small></div><label class="tg"><input type="checkbox" id="tgFinger"><i></i></label></div>
 </div>
 
 <!-- Call Overlay -->
 <div class="call-overlay" id="callOverlay">
   <div class="call-timer" id="callTimer">00:00</div>
-  <div class="call-avatar">🐰</div>
+  <div class="call-avatar" id="callAvatar">🐰</div>
   <div class="call-name" id="callName">小克</div>
   <div class="call-subtitle" id="callSubtitle">点击下方按钮授权麦克风</div>
   <div class="call-my-words" id="callTranscript"></div>
@@ -126,19 +222,111 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
   <div class="call-mic-error" id="callMicError"></div>
   <button id="callPermBtn" class="call-perm-btn" onclick="requestMicAndStart()">🎤 授权麦克风开始通话</button>
   <button class="call-hangup" onclick="toggleCall()">📞</button>
-
 </div>
 
 <script>
 let persona='xiaoke',loading=!1,sessionId=null,callOpen=!1,callTimer=0,callInterval=null;
 let recognition=null,recognitionWanted=!1,audioCtx=null,speaking=!1,speakQueue=[];
 
+// ═══ 装扮系统 ═══════════════════════════════════════════
+// 全存 localStorage,不动后端。头像可选表情包库里的任何一张图。
+const DECOR_KEY='bunny_decor_v1';
+const BGS={
+  '默认':'', '奶油':'#f6efe4',
+  '樱粉':'linear-gradient(180deg,#fdeef1,#f5dfe7)',
+  '薄荷':'linear-gradient(180deg,#eaf5ee,#dcefe5)',
+  '雾蓝':'linear-gradient(180deg,#e9eff8,#dfe7f3)',
+  '暖夜':'linear-gradient(180deg,#282130,#1a1622)'
+};
+const MY_BUBS=['#e898a4','#95ec69','#7489b4','#b48ac9','#f3b26a','#fffdfa'];
+const HIS_BUBS=['default','#fffdfa','#fbe9ec','#e8edf7','#effae9','#f5eedd'];
+const EMOJI_AVS=['🐰','🥕','🌸','🌙','✨','💌','🐇','☁️'];
+let decor={bg:'默认',myBub:'#e898a4',hisBub:'default',kAv:'emoji:🐰',myAv:'emoji:🌸',voiceBar:!0,showOS:!0,fingertips:!0};
+try{Object.assign(decor,JSON.parse(localStorage.getItem(DECOR_KEY)||'{}'))}catch(e){}
+function saveDecor(){try{localStorage.setItem(DECOR_KEY,JSON.stringify(decor))}catch(e){}}
+
+function textOn(hex){ // 按亮度决定气泡上的字用深色还是白色
+  const m=/^#?([0-9a-f]{6})$/i.exec(hex);if(!m)return'#fff';
+  const n=parseInt(m[1],16),r=n>>16,g=n>>8&255,b=n&255;
+  return (r*.299+g*.587+b*.114)>150?'#3d3a35':'#fff';
+}
+function applyDecor(){
+  const rs=document.documentElement.style;
+  const bg=BGS[decor.bg]!==undefined?BGS[decor.bg]:decor.bg; // 自定义色直接存色值
+  rs.setProperty('--chat-bg',bg||'linear-gradient(180deg,var(--bg),var(--bg2))');
+  rs.setProperty('--my-bub',decor.myBub);
+  rs.setProperty('--my-bub-text',textOn(decor.myBub));
+  if(decor.hisBub==='default'){rs.setProperty('--his-bub','var(--card)');rs.setProperty('--his-bub-text','var(--text)');rs.setProperty('--his-bub-border','var(--border)');}
+  else{rs.setProperty('--his-bub',decor.hisBub);rs.setProperty('--his-bub-text',textOn(decor.hisBub));rs.setProperty('--his-bub-border','transparent');}
+  document.body.classList.toggle('hide-os',!decor.showOS);
+  document.querySelectorAll('.avatar.assistant').forEach(el=>setAvatar(el,'assistant'));
+  document.querySelectorAll('.avatar.user').forEach(el=>setAvatar(el,'user'));
+  setAvatar(document.getElementById('callAvatar'),'assistant');
+}
+function setAvatar(el,role){
+  const v=role==='user'?decor.myAv:decor.kAv;
+  if(v.startsWith('img:')){el.style.backgroundImage="url('"+v.slice(4)+"')";el.textContent='';}
+  else{el.style.backgroundImage='';el.textContent=v.replace(/^emoji:/,'');}
+}
+function buildDrawer(){
+  const mk=(row,items,cur,fn,render)=>{
+    row.innerHTML='';
+    for(const it of items){
+      const d=document.createElement('div');d.className='sw';render(d,it);
+      if(it===cur)d.classList.add('on');
+      d.onclick=()=>{fn(it);buildDrawer();};
+      row.appendChild(d);
+    }
+  };
+  mk(document.getElementById('bgRow'),Object.keys(BGS),decor.bg,v=>{decor.bg=v;saveDecor();applyDecor();},
+    (d,v)=>{d.style.background=BGS[v]||'linear-gradient(180deg,#f8f3ec,#f2eae0)';d.title=v;});
+  // 背景自定义色
+  addCustom(document.getElementById('bgRow'),decor.bg,v=>{decor.bg=v;saveDecor();applyDecor();buildDrawer();});
+  mk(document.getElementById('myBubRow'),MY_BUBS,decor.myBub,v=>{decor.myBub=v;saveDecor();applyDecor();},
+    (d,v)=>{d.style.background=v;});
+  addCustom(document.getElementById('myBubRow'),decor.myBub,v=>{decor.myBub=v;saveDecor();applyDecor();buildDrawer();});
+  mk(document.getElementById('hisBubRow'),HIS_BUBS,decor.hisBub,v=>{decor.hisBub=v;saveDecor();applyDecor();},
+    (d,v)=>{if(v==='default'){d.style.background='var(--card)';d.title='跟随主题';}else d.style.background=v;});
+  buildAvGrid(document.getElementById('kAvGrid'),'kAv');
+  buildAvGrid(document.getElementById('myAvGrid'),'myAv');
+  document.getElementById('tgVoice').checked=decor.voiceBar;
+  document.getElementById('tgOS').checked=decor.showOS;
+  document.getElementById('tgFinger').checked=decor.fingertips;
+}
+function addCustom(row,cur,fn){
+  const d=document.createElement('div');d.className='sw custom';d.textContent='🎨';
+  const i=document.createElement('input');i.type='color';
+  if(/^#[0-9a-f]{6}$/i.test(cur))i.value=cur;
+  i.oninput=()=>fn(i.value);
+  d.appendChild(i);row.appendChild(d);
+}
+function buildAvGrid(grid,key){
+  grid.innerHTML='';
+  const cur=decor[key];
+  const add=(val,render)=>{
+    const d=document.createElement('div');d.className='av';render(d);
+    if(val===cur)d.classList.add('on');
+    d.onclick=()=>{decor[key]=val;saveDecor();applyDecor();buildDrawer();};
+    grid.appendChild(d);
+  };
+  for(const e of EMOJI_AVS)add('emoji:'+e,d=>d.textContent=e);
+  for(const name in stickerMap)add('img:'+stickerMap[name],d=>{d.style.backgroundImage="url('"+stickerMap[name]+"')";d.title=name;});
+}
+function toggleDrawer(){
+  const show=!document.getElementById('drawer').classList.contains('show');
+  document.getElementById('drawer').classList.toggle('show',show);
+  document.getElementById('drawerMask').classList.toggle('show',show);
+  if(show)buildDrawer();
+}
+document.getElementById('tgVoice').onchange=e=>{decor.voiceBar=e.target.checked;saveDecor();};
+document.getElementById('tgOS').onchange=e=>{decor.showOS=e.target.checked;saveDecor();applyDecor();};
+document.getElementById('tgFinger').onchange=e=>{decor.fingertips=e.target.checked;saveDecor();};
+
 // ═══ 表情包 ═══════════════════════════════════════════
 let stickerMap={};
 function renderContent(el,content){
   content=String(content==null?'':content);
   el.textContent='';
-  el.classList.toggle('sticker-only',/^\s*\[sticker:[^\]]+\]\s*$/.test(content));
   const parts=content.split(/\[sticker:([^\]]+)\]/);
   for(let i=0;i<parts.length;i++){
     if(i%2){ // 奇数段是表情名
@@ -159,13 +347,141 @@ function buildStickerPanel(){
 }
 function toggleStickers(){document.getElementById('stkpanel').classList.toggle('show')}
 
-// 打开时回到最近的会话并加载记录 —— 这样他趁你不在时留的话,一进门就能看见
+// ═══ 时间戳 (微信式: 隔 10 分钟以上才出现一条) ═══════════
+let lastTs=0;
+function fmtTime(ts){
+  const d=new Date(ts),now=new Date();
+  const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const day0=t=>new Date(t.getFullYear(),t.getMonth(),t.getDate()).getTime();
+  const diff=(day0(now)-day0(d))/864e5;
+  if(diff===0)return hm;
+  if(diff===1)return'昨天 '+hm;
+  if(diff<7)return'周'+'日一二三四五六'[d.getDay()]+' '+hm;
+  return (d.getFullYear()!==now.getFullYear()?d.getFullYear()+'年':'')+(d.getMonth()+1)+'月'+d.getDate()+'日 '+hm;
+}
+function maybeDivider(ts){
+  if(!ts)ts=Date.now();
+  if(ts-lastTs>10*60e3){
+    const d=document.createElement('div');d.className='divider';d.textContent=fmtTime(ts);
+    document.getElementById('msgs').appendChild(d);
+  }
+  lastTs=ts;
+}
+
+// ═══ 消息 DOM ═══════════════════════════════════════════
+function addRow(role,ts){
+  maybeDivider(ts);
+  const row=document.createElement('div');row.className='row '+role;
+  const av=document.createElement('div');av.className='avatar '+role;setAvatar(av,role);
+  const wrap=document.createElement('div');wrap.className='bwrap';
+  const bub=document.createElement('div');bub.className='bubble '+role;
+  wrap.appendChild(bub);row.appendChild(av);row.appendChild(wrap);
+  document.getElementById('msgs').appendChild(row);
+  bub.scrollIntoView({behavior:'smooth'});
+  return {row,bub,wrap};
+}
+// 内心OS: 从回复末尾摘出 [os:...] 那句没说出口的
+function splitOS(content){
+  content=String(content==null?'':content);
+  let os='';
+  const cleaned=content.replace(/\[os:([\s\S]*?)\]\s*$/,(m,p)=>{os=p.trim();return'';}).replace(/\[os:[\s\S]*?\]/g,'').trim();
+  return {text:cleaned,os};
+}
+function fillAssistant(parts,content){
+  const {text,os}=splitOS(content);
+  const bub=parts.bub;bub.innerHTML='';
+  const stickerOnly=/^\s*\[sticker:[^\]]+\]\s*$/.test(text);
+  bub.classList.toggle('sticker-only',stickerOnly);
+  const speech=stickerOnly?'':text.replace(/\[sticker:[^\]]+\]/g,' ').trim();
+  if(decor.voiceBar&&speech){
+    const vb=document.createElement('div');vb.className='vbar';
+    vb.innerHTML='<span class="vp">▶</span><span class="waves"><i></i><i></i><i></i><i></i><i></i></span><span class="vdur">'+estDur(speech)+'"</span>';
+    vb.onclick=()=>playVoice(vb,speech);
+    bub.appendChild(vb);
+  }
+  const t=document.createElement('div');renderContent(t,text);bub.appendChild(t);
+  if(os){
+    const o=document.createElement('div');o.className='os';
+    const s=document.createElement('span');s.className='os-text';s.textContent=os;
+    o.appendChild(s);o.onclick=()=>o.classList.toggle('collapsed');
+    bub.appendChild(o);
+  }
+  // 译: 他说英文,点一下展开中文
+  if(speech&&/[a-zA-Z]{2}/.test(speech)){
+    const meta=document.createElement('div');meta.className='meta';
+    const btn=document.createElement('span');btn.className='tbtn';btn.textContent='译';
+    const out=document.createElement('div');out.className='tout';
+    btn.onclick=()=>toggleTrans(btn,out,speech,os);
+    meta.appendChild(btn);parts.wrap.appendChild(meta);parts.wrap.appendChild(out);
+  }
+}
+let transBusy=!1;
+async function toggleTrans(btn,out,text,os){
+  if(out.dataset.done){out.classList.toggle('show');return;}
+  if(transBusy)return;transBusy=!0;btn.textContent='…';
+  try{
+    const payload=text+(os?'\n(unspoken) '+os:'');
+    const d=await fetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:payload})}).then(r=>r.json());
+    if(d.zh){out.textContent=d.zh;out.dataset.done='1';out.classList.add('show');}
+    else btn.textContent='译';
+  }catch(e){btn.textContent='译';}
+  if(out.dataset.done)btn.textContent='译';
+  transBusy=!1;
+}
+
+// ═══ 语音条播放 (他的声音,复用 /api/tts) ═══════════════
+function estDur(t){ // 微信式时长标注:按语速估,不用真合成完才知道
+  const en=(t.match(/[a-zA-Z'’-]+/g)||[]).length,zh=(t.match(/[一-鿿]/g)||[]).length;
+  return Math.min(60,Math.max(1,Math.round(en/2.6+zh/3.8)));
+}
+let curVoice=null;
+async function playVoice(el,text){
+  if(curVoice){const same=curVoice.el===el;curVoice.stop();curVoice=null;if(same)return;}
+  const chunks=splitForTTS(text);
+  let stopped=!1,audio=null;
+  curVoice={el,stop(){stopped=!0;if(audio)try{audio.pause()}catch(e){};el.classList.remove('playing');el.querySelector('.vp').textContent='▶';}};
+  el.classList.add('playing');el.querySelector('.vp').textContent='⏸';
+  for(const c of chunks){
+    if(stopped)break;
+    const blob=await fetchTTSBlob(c);
+    if(stopped)break;
+    if(!blob)continue;
+    await new Promise(res=>{
+      audio=new Audio(URL.createObjectURL(blob));
+      audio.onended=res;audio.onerror=res;
+      audio.play().catch(res);
+    });
+  }
+  if(curVoice&&curVoice.el===el){curVoice=null;el.classList.remove('playing');el.querySelector('.vp').textContent='▶';}
+}
+async function fetchTTSBlob(text){
+  try{
+    const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,persona})});
+    if(!r.ok)return null;
+    return await r.blob();
+  }catch(e){return null}
+}
+
+// ═══ fingertips · 指尖 ═══════════════════════════════════
+// 打字时每 4 秒给后端一个空 ping —— 只上报"正在打字"这个事实,不携带任何内容。
+let _lastPing=0;
+document.getElementById('inp').addEventListener('input',()=>{
+  if(!decor.fingertips)return;
+  const now=Date.now();
+  if(now-_lastPing<4000)return;
+  if(!document.getElementById('inp').value.trim())return;
+  _lastPing=now;
+  fetch('/api/typing/ping',{method:'POST',keepalive:!0}).catch(()=>{});
+});
+
+// ═══ 打开时回到最近的会话并加载记录 ═══════════════════════
 (async()=>{
   try{
     const l=await fetch('/api/stickers').then(r=>r.json());
     if(Array.isArray(l))for(const s of l)stickerMap[s.name]=s.url;
     buildStickerPanel();
   }catch(e){}
+  applyDecor();
   try{
     const list=await fetch('/api/sessions').then(r=>r.json());
     if(Array.isArray(list)&&list.length){
@@ -174,7 +490,16 @@ function toggleStickers(){document.getElementById('stkpanel').classList.toggle('
       if(Array.isArray(msgs)&&msgs.length){
         document.getElementById('welcome').style.display='none';
         let lastEl=null;
-        for(const m of msgs){lastEl=addMsg(m.role,'');renderContent(lastEl,m.content);}
+        for(const m of msgs){
+          const ts=m.created_at?new Date(m.created_at).getTime():Date.now();
+          const parts=addRow(m.role==='user'?'user':'assistant',ts);
+          if(m.role==='user'){
+            parts.bub.classList.toggle('sticker-only',/^\s*\[sticker:[^\]]+\]\s*$/.test(String(m.content||'').trim()));
+            renderContent(parts.bub,m.content);
+          }
+          else fillAssistant(parts,m.content);
+          lastEl=parts.row;
+        }
         if(lastEl)lastEl.scrollIntoView();
         return;
       }
@@ -192,31 +517,96 @@ async function send(){
   if(!text||loading)return;inp.value='';
   await postMessage(text);
 }
-
 async function sendSticker(name){
   if(loading)return;
   document.getElementById('stkpanel').classList.remove('show');
   await postMessage('[sticker:'+name+']');
 }
-
 async function postMessage(text){
   if(loading)return;loading=!0;
   document.getElementById('welcome').style.display='none';
-  const u=addMsg('user','');renderContent(u,text);
-  const div=addMsg('assistant','<span class="typing"><i></i><i></i><i></i></span>');
+  const u=addRow('user');
+  u.bub.classList.toggle('sticker-only',/^\s*\[sticker:[^\]]+\]\s*$/.test(text));
+  renderContent(u.bub,text);
+  const parts=addRow('assistant');
+  parts.bub.innerHTML='<span class="typing"><i></i><i></i><i></i></span>';
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text,persona})});
     const d=await r.json();
-    renderContent(div,d.reply||'(空)');
+    fillAssistant(parts,d.reply||'(空)');
     if(callOpen)speakAsync(d.reply);
-  }catch(e){div.textContent='连接中断——稍等再试';}
+  }catch(e){parts.bub.textContent='连接中断——稍等再试';}
   loading=!1;
 }
 
-function addMsg(role,content){
-  const d=document.createElement('div');d.className='msg '+role+' '+persona;
-  d.innerHTML=content;document.getElementById('msgs').appendChild(d);
-  d.scrollIntoView({behavior:'smooth'});return d;
+// ═══ 按住说话 (复用通话那套识别,微信式交互) ═══════════════
+let voiceMode=!1;
+function toggleVoiceMode(){
+  voiceMode=!voiceMode;
+  document.getElementById('inp').style.display=voiceMode?'none':'';
+  document.getElementById('talkBtn').style.display=voiceMode?'':'none';
+  document.getElementById('sendbtn').style.display=voiceMode?'none':'';
+  document.getElementById('modeBtn').textContent=voiceMode?'⌨️':'🎤';
+}
+let holdRec=null,holdFinal='',holdInterim='',holding=!1,holdCancel=!1,holdDone=!1,holdStartY=0;
+const talkBtn=document.getElementById('talkBtn');
+talkBtn.addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  if(loading||holding)return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){document.getElementById('holdText').textContent='此浏览器不支持语音识别';return;}
+  holding=!0;holdCancel=!1;holdDone=!1;holdFinal='';holdInterim='';holdStartY=e.clientY;
+  talkBtn.classList.add('holding');talkBtn.textContent='松开 发送';
+  document.getElementById('holdOverlay').classList.add('show');
+  document.getElementById('holdOverlay').classList.remove('cancel');
+  document.getElementById('holdText').textContent='我在听…';
+  document.getElementById('holdHint').textContent='松开发送 · 上滑取消';
+  try{talkBtn.setPointerCapture(e.pointerId)}catch(err){}
+  holdRec=new SR();holdRec.lang='zh-CN';holdRec.interimResults=!0;holdRec.continuous=!0;
+  holdRec.onresult=ev=>{
+    holdInterim='';
+    for(let i=ev.resultIndex;i<ev.results.length;i++){
+      const t=(ev.results[i][0]?.transcript||'').trim();
+      if(ev.results[i].isFinal)holdFinal+=t;else holdInterim+=t;
+    }
+    const all=(holdFinal+holdInterim).trim();
+    if(all)document.getElementById('holdText').textContent=all;
+  };
+  holdRec.onend=()=>{
+    if(holding){try{holdRec.start()}catch(err){}}
+    else finishHold();
+  };
+  holdRec.onerror=ev=>{
+    if(ev.error==='not-allowed'){document.getElementById('holdText').textContent='麦克风未授权';holding=!1;setTimeout(finishHold,800);}
+  };
+  try{holdRec.start()}catch(err){}
+});
+talkBtn.addEventListener('pointermove',e=>{
+  if(!holding)return;
+  const up=holdStartY-e.clientY>80;
+  if(up!==holdCancel){
+    holdCancel=up;
+    document.getElementById('holdOverlay').classList.toggle('cancel',up);
+    document.getElementById('holdHint').textContent=up?'松开手指,取消发送':'松开发送 · 上滑取消';
+  }
+});
+function endHold(){
+  if(!holding)return;
+  holding=!1;
+  talkBtn.classList.remove('holding');talkBtn.textContent='按住 说话';
+  let ended=!1;
+  if(holdRec)try{holdRec.stop();ended=!0}catch(err){}
+  if(!ended)finishHold();
+  setTimeout(finishHold,1500); // 识别器 onend 偶尔不来,兜底收尾
+}
+talkBtn.addEventListener('pointerup',endHold);
+talkBtn.addEventListener('pointercancel',()=>{holdCancel=!0;endHold();});
+function finishHold(){
+  if(holdDone)return;holdDone=!0;
+  document.getElementById('holdOverlay').classList.remove('show');
+  const text=(holdFinal+holdInterim).trim();
+  holdRec=null;
+  if(!holdCancel&&text)postMessage(text);
 }
 
 // ═══ Voice Call ═══════════════════════════════════════
@@ -400,8 +790,8 @@ function showZhSubtitle(text){
 }
 
 async function speakAsync(text){
-  // 表情包暗号不朗读、不进字幕
-  text=String(text||'').replace(/\[sticker:[^\]]+\]/g,' ').trim();
+  // 表情包暗号和心声 [os:...] 不朗读、不进字幕
+  text=String(text||'').replace(/\[sticker:[^\]]+\]/g,' ').replace(/\[os:[\s\S]*?\]/g,' ').trim();
   if(!text)return;
   speakQueue=splitForTTS(text);
   showZhSubtitle(text);
@@ -420,7 +810,6 @@ async function speakAsync(text){
   }catch(e){}
   speaking=!1;
 }
-
 </script>
 </body>
 </html>

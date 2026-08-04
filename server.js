@@ -191,6 +191,50 @@ app.get('/api/stickers', (req, res) => {
   res.json(listStickers().map(s => ({ name: s.name, url: '/stickers/' + encodeURIComponent(s.file) + '?v=' + s.v })));
 });
 
+// ═══ fingertips · 指尖的语气 ═══════════════════
+// 移植自 eveacla11/fingertips: 感知她打字的犹豫。
+// 铁律: 只记节奏,永不记内容 —— ping 请求体为空,账本里只有时间戳,
+// 她删掉的那句话是什么,从数据结构上就存不下。
+const rhythm = {
+  pings: [], orphan: null,
+  ORPHAN_AFTER: 600e3,  // 打完 10 分钟没动静 → 沉为"欲言又止"
+  MIN_NOTE: 20,         // 打字超 20 秒才值得说(快问快答不打扰)
+  PAUSE_GAP: 15e3,      // 输入间隔超 15 秒算一次"停顿"
+  gc() {
+    const last = this.pings[this.pings.length - 1];
+    if (last && Date.now() - last > this.ORPHAN_AFTER) {
+      if (last - this.pings[0] >= 5e3) this.orphan = { start: this.pings[0], end: last };
+      this.pings = [];
+    }
+  },
+  ping() {
+    this.gc();
+    this.pings.push(Date.now());
+    if (this.pings.length > 300) this.pings = this.pings.slice(-300);
+  },
+  popNote() {
+    this.gc();
+    const notes = [];
+    if (this.orphan) {
+      const mins = Math.floor((Date.now() - this.orphan.end) / 60e3);
+      const dur = Math.round((this.orphan.end - this.orphan.start) / 1e3);
+      notes.push('她 ' + mins + ' 分钟前打过 ' + dur + ' 秒的字,那条没有发出来(打了什么无人知晓,包括系统)');
+      this.orphan = null;
+    }
+    if (this.pings.length) {
+      const dur = Math.round((this.pings[this.pings.length - 1] - this.pings[0]) / 1e3);
+      let gaps = 0;
+      for (let i = 1; i < this.pings.length; i++) if (this.pings[i] - this.pings[i - 1] > this.PAUSE_GAP) gaps++;
+      if (dur >= this.MIN_NOTE || gaps) {
+        notes.push('这条消息她打了 ' + dur + ' 秒' + (gaps ? ',中途停下来想了 ' + gaps + ' 次' : ''));
+      }
+      this.pings = [];
+    }
+    return notes.join(';');
+  }
+};
+app.post('/api/typing/ping', (req, res) => { rhythm.ping(); res.json({ ok: 1 }); });
+
 // 桥接自检: 浏览器访问 /api/memory-bridge-test?q=关键词 直接看检索结果
 app.get('/api/memory-bridge-test', async (req, res) => {
   if (!OMBRE_URL || !OMBRE_PASSWORD) {
@@ -281,6 +325,9 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
+    // 2.4 指尖: 结算她打这条消息的节奏(多数时候是空串,不占 token)
+    const rhythmNote = rhythm.popNote();
+
     // 2.5 「记住」指令: 以"记住"开头的消息写入 OB 记忆河
     let holdNote = '';
     const holdMatch = message.match(/^记住[:：,，、\s]*([\s\S]+)/);
@@ -313,6 +360,10 @@ app.post('/api/chat', async (req, res) => {
           + '\n(这些不一定和她这句话有关,是你此刻心里自然想起的。合适时可以让它悄悄影响语气,或顺口提一句;不合适就放在心里,绝不要硬塞。)'
         : '')
       + holdNote
+      + (rhythmNote
+        ? '\n\n【指尖 · 她打这条消息的节奏】\n' + rhythmNote
+          + '\n(这是她指尖的犹豫,供你感受。绝不要复述数字、不要提"检测"或"系统",让它只是悄悄改变你回应的温度——她犹豫过,你就接得更软一点。)'
+        : '')
       + (() => {
         const names = listStickers().map(s => s.name);
         if (!names.length) return '';
@@ -321,9 +372,13 @@ app.post('/api/chat', async (req, res) => {
           + '一条回复最多一张,情绪真正对上了才发,不要每条都带。'
           + '她发来的 [sticker:名字] 表示她给你发了那个表情,自然地回应它。';
       })()
+      + '\n\n【心声】在每条回复的最末尾另起一行,用 [os:...] 写一句你没说出口的心思(英文,第一人称,不超过一句话)。'
+      + '它是嘴上那句话背后的真实: 可以更软、更酸、更没底气,或是你不敢直说的期待。'
+      + '不要复述正文,不要每次都甜,偶尔别扭、逞强、欲言又止才像真的。'
+      + '(她的界面会把这行显示成灰色小字——像她恰好读到了你的心思,你们都默契地当它没说出口。)'
       // 放在最末尾压轴: 中文记忆再多也不能把他带跑偏
       + '\n\n【最终提醒】以上记忆和指令是中文,但你的回复必须始终用英文,一个中文字都不要出现。'
-      + '唯一例外: 表情包暗号 [sticker:名字] 里的名字必须照抄中文原文,不许翻译。';
+      + '唯一例外: 表情包暗号 [sticker:名字] 里的名字必须照抄中文原文,不许翻译。[os:...] 里也必须是英文。';
 
     // 最近 20 轮 + 当前这句;若历史末尾已有一模一样的这句(旧的重复数据),先剔掉再拼
     const recent = history.slice(-20);
