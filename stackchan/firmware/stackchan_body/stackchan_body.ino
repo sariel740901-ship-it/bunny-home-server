@@ -63,12 +63,14 @@ bool beginHttp(HTTPClient& http, WiFiClient& plain, WiFiClientSecure& secure, co
   return http.begin(plain, url);
 }
 
+int gLastHttpCode = 0;  // 最近一次 GET 的结果(-1 = 连接都没建立)
 String httpGetText(const String& url, int timeoutMs) {
   WiFiClient plain; WiFiClientSecure secure;
   HTTPClient http;
   http.setTimeout(timeoutMs);
-  if (!beginHttp(http, plain, secure, url)) return "";
+  if (!beginHttp(http, plain, secure, url)) { gLastHttpCode = -1; return ""; }
   int code = http.GET();
+  gLastHttpCode = code;
   String body = (code == 200) ? http.getString() : "";
   http.end();
   return body;
@@ -306,6 +308,10 @@ void setup() {
   avatar.init();
   avatar.setExpression(Expression::Sleepy);  // 醒来前的脸
 
+  // 体检广播: 网络这段以前是哑的,出问题只会摆脸 —— 现在全写串口
+  Serial.begin(115200);
+  delay(100);
+  Serial.println("[net] boot, connecting WiFi: " WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   int tries = 0;
   while (WiFi.status() != WL_CONNECTED && tries < 60) {
@@ -313,10 +319,13 @@ void setup() {
     tries++;
   }
   if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("[net] WiFi FAILED (30s) — 检查 config.h 的 WIFI_SSID / WIFI_PASS");
     avatar.setExpression(Expression::Sad);
     avatar.setSpeechText("WiFi...?");
     while (true) delay(1000);  // 连不上就摆烂,检查 config.h 后重启
   }
+  Serial.println("[net] WiFi ok, ip=" + WiFi.localIP().toString());
+  Serial.println("[net] relay = " RELAY_BASE);
 
 #if ENABLE_CAMERA
   cameraInit();
@@ -405,6 +414,17 @@ void loop() {
   // 空闲: 去中继拉命令(服务器最长挂 25 秒,超时回空 {} 属正常)
   String body = httpGetText(
       String(RELAY_BASE) + "/poll?key=" + RELAY_KEY + "&last=" + String(lastCmdId), 30000);
+  // 拉不到就报串口: -1=连不上(防火墙/IP不对), 403=key和中继token.txt对不上
+  static uint32_t pollFails = 0;
+  if (body.length() == 0) {
+    pollFails++;
+    if (pollFails <= 3 || pollFails % 10 == 0)
+      Serial.println("[net] poll FAILED #" + String(pollFails) + " http=" + String(gLastHttpCode));
+    delay(2000);  // 失败歇口气,别贴脸连打
+  } else if (pollFails) {
+    Serial.println("[net] poll recovered after " + String(pollFails) + " fails");
+    pollFails = 0;
+  }
   if (body.length() > 2) {
     JsonDocument doc;
     if (deserializeJson(doc, body) == DeserializationError::Ok && (doc["id"] | 0) > 0) {
