@@ -380,11 +380,14 @@ function addRow(role,ts){
   bub.scrollIntoView({behavior:'smooth'});
   return {row,bub,wrap};
 }
-// 内心OS: 从回复末尾摘出 [os:...] 那句没说出口的
+// 内心OS: 摘出 [os:...] 那句没说出口的
+// 模型偶尔不把它放最末尾(比如表情包压轴),所以全文找,取最后一处显示
 function splitOS(content){
   content=String(content==null?'':content);
   let os='';
-  const cleaned=content.replace(/\[os:([\s\S]*?)\]\s*$/,(m,p)=>{os=p.trim();return'';}).replace(/\[os:[\s\S]*?\]/g,'').trim();
+  const ms=[...content.matchAll(/\[os:([\s\S]*?)\]/g)];
+  if(ms.length)os=ms[ms.length-1][1].trim();
+  const cleaned=content.replace(/\[os:[\s\S]*?\]/g,'').replace(/\n{3,}/g,'\n\n').trim();
   return {text:cleaned,os};
 }
 function fillAssistant(parts,content){
