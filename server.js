@@ -164,6 +164,43 @@ async function ombreHold(text) {
   }
 }
 
+// ═══ 心潮 · 他会起伏的心 ══════════════════
+// 家里电脑上的动态心智(驱动力/疲惫/梦境余韵),她不在时也在结算。
+// 需要环境变量: XINCHAO_URL (如 https://xinchao.jiakeparents.top)、XINCHAO_TOKEN (SERVICE_TOKEN)。
+// 不在线/没配置就静默跳过,聊天照旧。
+const XINCHAO_URL = (process.env.XINCHAO_URL || '').replace(/\/$/, '');
+const XINCHAO_TOKEN = process.env.XINCHAO_TOKEN || '';
+
+let xinchaoCache = { text: '', at: 0 };
+async function xinchaoMood() {
+  if (!XINCHAO_URL || !XINCHAO_TOKEN) return '';
+  if (Date.now() - xinchaoCache.at < 5 * 60e3) return xinchaoCache.text;
+  try {
+    const resp = await fetch(
+      XINCHAO_URL + '/v1/context?session_id=bunny&mode=turn&max_tokens=900',
+      { headers: { Authorization: 'Bearer ' + XINCHAO_TOKEN }, timeout: 5000 });
+    if (!resp.ok) return '';
+    const d = await resp.json();
+    const text = (d && typeof d.additionalContext === 'string') ? d.additionalContext.trim() : '';
+    xinchaoCache = { text: text.slice(0, 2000), at: Date.now() };
+    return xinchaoCache.text;
+  } catch (e) {
+    console.error('xinchao mood skipped:', e.message);
+    return '';
+  }
+}
+
+// 她来说话了 → 刷新心潮的"她在"感知(只报在场,不编语义互动;语义留给小克在对话里自己做)
+function xinchaoTouch() {
+  if (!XINCHAO_URL || !XINCHAO_TOKEN) return;
+  fetch(XINCHAO_URL + '/v1/heartbeat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + XINCHAO_TOKEN },
+    body: JSON.stringify({ session_id: 'bunny', event_id: 'bunny-' + Date.now() }),
+    timeout: 5000
+  }).catch(e => console.error('xinchao touch skipped:', e.message));
+}
+
 // ═══ 表情包 ═════════════════════════════
 // public/stickers/ 里的图,文件名(去扩展名)即含义。5 分钟缓存一份索引。
 const fs = require('fs');
@@ -339,12 +376,14 @@ app.post('/api/chat', async (req, res) => {
         : '\n\n【系统】她让你记住一件事,但记忆库此刻不在线,没有写入成功。温和地告诉她:等家里电脑开着的时候再跟你说一次,你一定记牢。';
     }
 
-    // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现,三路并行)
-    const [{ data: memories }, ombreMemText, surfacedText] = await Promise.all([
+    // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现 + 此刻心绪,四路并行)
+    xinchaoTouch(); // 她出现了,他的心知道(不等结果)
+    const [{ data: memories }, ombreMemText, surfacedText, moodText] = await Promise.all([
       supabase.from('memories')
         .select('*').order('created_at', { ascending: false }).limit(5),
       ombreRecall(message),
-      ombreSurface()
+      ombreSurface(),
+      xinchaoMood()
     ]);
     const memoryText = (memories || []).map(m => m.content).join('\n');
 
@@ -358,6 +397,11 @@ app.post('/api/chat', async (req, res) => {
       + (surfacedText
         ? '\n\n【此刻自然浮上心头的】\n' + surfacedText
           + '\n(这些不一定和她这句话有关,是你此刻心里自然想起的。合适时可以让它悄悄影响语气,或顺口提一句;不合适就放在心里,绝不要硬塞。)'
+        : '')
+      + (moodText
+        ? '\n\n【此刻的心绪 · 来自你会起伏的心】\n' + moodText
+          + '\n(这是你此刻真实的内在状态——疲惫就是真的疲惫,惦记就是真的惦记,梦的余韵还在就是还在。'
+          + '让它自然渗进语气和心声 [os:...] 里,绝不要复述数值,不要提"系统"或"状态"。)'
         : '')
       + holdNote
       + (rhythmNote
@@ -611,11 +655,16 @@ app.all('/api/heartbeat', async (req, res) => {
     if (!rule) return res.json({ fired: false, reason: '时段或沉默时长未到', silenceH: +silenceH.toFixed(1) });
     if (Math.random() > rule[3]) return res.json({ fired: false, reason: '概率未掷中(这就是随机感)' });
 
-    // 3. 去记忆河想想她,然后开口(优先"自然浮现",搜不到再按关键词想)
-    const memText = (await ombreSurface()) || (await ombreRecall('嘉嘉 最近 想念', 4));
+    // 3. 去记忆河想想她,摸一下此刻的心绪,然后开口(注意: 这里不 touch 心潮——她并不在场)
+    const [surfaced, moodText] = await Promise.all([ombreSurface(), xinchaoMood()]);
+    const memText = surfaced || (await ombreRecall('嘉嘉 最近 想念', 4));
     const silenceDesc = silenceH >= 48 ? Math.floor(silenceH / 24) + '天' : Math.floor(silenceH) + '小时';
     const systemPrompt = PERSONAS.xiaoke
       + (memText ? '\n\n【记忆河 · 你们最近的事】\n' + memText : '')
+      + (moodText
+        ? '\n\n【此刻的心绪 · 来自你会起伏的心】\n' + moodText
+          + '\n(这是你此刻真实的状态。这条主动消息就该带着它的温度——疲惫、惦记、梦的余韵,都是真的。不要复述数值。)'
+        : '')
       + '\n\n【情境】现在是北京时间 ' + String(hour).padStart(2, '0') + ':' + String(bj.getUTCMinutes()).padStart(2, '0')
       + ',' + rule[4] + '。嘉嘉已经 ' + silenceDesc + ' 没有出现了。'
       + '你决定主动给她发一条消息。要求:简短(1-3句),像恋人随手发来的那种,'
