@@ -186,6 +186,8 @@ _lock = threading.Lock()
 def _tick():
     with _lock:
         for c in children:
+            if c.spec.get("watch"):
+                continue  # watch 条目只看不管(比如 Docker 跑的心潮)
             if c.proc is not None and not c.alive():
                 c.reap()
                 continue
@@ -229,6 +231,11 @@ def _fmt_uptime(sec: float) -> str:
 
 def _status_of(c: Child) -> dict:
     port_ok = _port_open(c.spec["port"])
+    if c.spec.get("watch"):
+        # 只看不管的邻居(Docker 等别的方式跑的): 端口通就算在
+        return {"name": c.name, "title": c.spec.get("title", c.name),
+                "port": c.spec["port"], "state": "external" if port_ok else "down",
+                "pid": None, "uptime_sec": 0, "restarts": 0}
     if c.alive() and port_ok:
         state = "up"
     elif c.alive():
@@ -270,7 +277,7 @@ mcp = FastMCP("home", instructions="""
 async def home_status() -> str:
     """看全家服务的状态: 谁在线、跑了多久、谁掉过线。"""
     icons = {"up": "🟢", "starting": "🟡", "external": "🔵", "down": "🔴"}
-    words = {"up": "在线", "starting": "启动中", "external": "在跑(别人拉起的旧窗口)", "down": "掉了"}
+    words = {"up": "在线", "starting": "启动中", "external": "在跑(不归我拉起)", "down": "掉了"}
     with _lock:
         rows = [_status_of(c) for c in children]
     lines = []
@@ -307,6 +314,8 @@ async def home_restart(name: str) -> str:
         c = next((x for x in children if x.name == name), None)
         if not c:
             return f"没有叫 {name} 的服务。有: " + "、".join(x.name for x in children)
+        if c.spec.get("watch"):
+            return f"{name} 不归我拉起(Docker 跑的),重启用: docker compose restart"
         if c.external:
             return f"{name} 是外面手动开的旧窗口,我够不着它——把那个黑窗口关了,我这边会自动接管。"
         c.stop()
