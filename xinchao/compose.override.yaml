@@ -1,0 +1,7 @@
+# 放到 xinchao-dynamic-mind 目录里(和 compose.yaml 并排),docker compose 会自动叠加。
+# 作用: 上游默认只绑 127.0.0.1,隧道容器(cloudflared)够不着 —— 这里改成全接口,
+# 对外安全靠隧道 + MCP_PATH_TOKEN,和家里其他服务一个待遇。
+services:
+  xinchao:
+    ports: !override
+      - "18110:18110"

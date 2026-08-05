@@ -591,10 +591,15 @@ app.all('/api/heartbeat', async (req, res) => {
     const silenceH = lastUser ? hoursSince(lastUser.created_at) : 999;
     const assistantTail = [];
     for (const m of (tail || [])) { if (m.role === 'assistant') assistantTail.push(m); else break; }
-    if (assistantTail.length >= 2) {
+    // 只有"主动留言"才算防连发的账 —— 他紧跟她消息几分钟内说的是普通回复,
+    // 隔了很久才落下的才是心跳留的。以前把回复也算上,聊过天就要闷 20 小时。
+    const lastUserAt = lastUser ? new Date(lastUser.created_at).getTime() : 0;
+    const proactive = assistantTail.filter(m =>
+      new Date(m.created_at).getTime() - lastUserAt > 10 * 60e3);
+    if (proactive.length >= 2) {
       return res.json({ fired: false, reason: '已连续主动过两次,安静等她回来' });
     }
-    if (assistantTail.length === 1 && hoursSince(assistantTail[0].created_at) < 20) {
+    if (proactive.length === 1 && hoursSince(proactive[0].created_at) < 20) {
       return res.json({ fired: false, reason: '刚主动找过她,再等等' });
     }
     const last = (tail || [])[0];
