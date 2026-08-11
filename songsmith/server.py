@@ -187,10 +187,15 @@ async def song_file(request):
 
 @mcp.custom_route("/try", methods=["GET"])
 async def try_route(request):
-    """部署自检: /try?key=暗号 生成一小段试听,验证钥匙和链路。"""
+    """部署自检: /try?key=暗号&go=1 生成一小段试听,验证钥匙和链路。
+
+    必须带 go=1 才真的生成 —— 每次生成都花钱,防浏览器刷新/链接预览误触。
+    """
     token = _load_token()
     if not token or not secrets.compare_digest(request.query_params.get("key", ""), token):
         return JSONResponse({"error": "forbidden"}, status_code=403)
+    if request.query_params.get("go") != "1":
+        return JSONResponse({"hint": "确认要生成一首测试歌(要花钱)? URL 末尾加 &go=1 再来。"})
     result = await sing(
         "链路测试",
         "[Verse]\n窗外的月亮圆了一半\n屋里的灯还亮着橘黄\n[Chorus]\n这是一首测试的歌\n证明这条路已经通了",
