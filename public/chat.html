@@ -132,6 +132,33 @@ body.hide-os .os{display:none}
 .tg input:checked+i{background:var(--xiaoke)}
 .tg input:checked+i::after{transform:translateX(19px)}
 
+/* ═══ 心潮面板 ═══ */
+.mood-loading{text-align:center;color:var(--muted);font-size:13.5px;padding:36px 0}
+.mood-state{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;color:var(--muted);margin-top:6px}
+.mood-state b{color:var(--text);font-size:15px;font-weight:600}
+.fat-row{margin:10px 2px 2px;font-size:12px;color:var(--muted)}
+.fat-bar{height:6px;border-radius:3px;background:var(--chip);overflow:hidden;margin-top:4px}
+.fat-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--xiaoke),var(--xiaoke-deep));border-radius:3px;transition:width .5s}
+.petal-wrap{display:flex;justify-content:center;padding:4px 0 0}
+.petal-wrap svg{max-width:320px;width:100%;height:auto}
+.pl-grid{fill:none;stroke:var(--border);stroke-width:1}
+.pl-axis{stroke:var(--border);stroke-width:.6;opacity:.6}
+.pl-shape{fill:color-mix(in srgb,var(--xiaoke) 30%,transparent);stroke:var(--xiaoke-deep);stroke-width:1.6;stroke-linejoin:round}
+.pl-dot{fill:var(--xiaoke-deep)}
+.pl-label{font-size:9.5px;fill:var(--muted)}
+.pl-label.hot{fill:var(--xiaoke-deep);font-weight:600}
+.top-drives{margin:8px 0 2px;display:flex;flex-direction:column;gap:7px}
+.td-row{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.td-row .n{width:118px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.td-row .bar{flex:1;height:6px;border-radius:3px;background:var(--chip);overflow:hidden}
+.td-row .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--claude),var(--claude-deep));border-radius:3px}
+.td-row .v{width:34px;text-align:right;color:var(--muted);font-size:11.5px}
+.mood-dreams{margin-top:6px;font-size:12.5px;color:var(--muted);line-height:1.9}
+.mood-dreams .d{display:flex;justify-content:space-between}
+.mood-dreams .lu{letter-spacing:2px}
+.mood-foot{text-align:center;margin-top:10px}
+.mood-foot button{border:1px solid var(--border);background:var(--chip);color:var(--text);border-radius:14px;padding:5px 16px;font-size:12.5px;cursor:pointer;font-family:inherit}
+
 /* Call overlay — 暖夜色 */
 .call-overlay{display:none;position:fixed;inset:0;background:linear-gradient(170deg,#2b1f26 0%,#3d2732 45%,#241a20 100%);z-index:50;flex-direction:column;align-items:center;justify-content:center;gap:18px;overflow:hidden}
 .call-overlay.show{display:flex}
@@ -167,6 +194,7 @@ body.hide-os .os{display:none}
   <header class="topbar">
     <h1 id="title">🐰 小克</h1>
     <div class="actions">
+      <button class="icon-btn" onclick="toggleMood()" title="他的心">💗</button>
       <button class="icon-btn" onclick="toggleDrawer()" title="装扮">🎨</button>
       <button class="icon-btn" id="callBtn" onclick="toggleCall()" title="语音通话">📞</button>
     </div>
@@ -209,6 +237,13 @@ body.hide-os .os{display:none}
   <div class="togglerow"><div>他的语音条<small>他的消息带一条可播放的语音</small></div><label class="tg"><input type="checkbox" id="tgVoice"><i></i></label></div>
   <div class="togglerow"><div>心声<small>他回复末尾那句没说出口的心思</small></div><label class="tg"><input type="checkbox" id="tgOS"><i></i></label></div>
   <div class="togglerow" style="border-bottom:none"><div>指尖<small>让他感知你打字的犹豫(只传节奏,不传内容)</small></div><label class="tg"><input type="checkbox" id="tgFinger"><i></i></label></div>
+</div>
+
+<!-- 心潮面板: 他的心 -->
+<div class="drawer-mask" id="moodMask" onclick="toggleMood()"></div>
+<div class="drawer" id="moodDrawer">
+  <div class="dtitle">🌊 他此刻的心</div>
+  <div id="moodBody"><div class="mood-loading">正在摸他的心…</div></div>
 </div>
 
 <!-- Call Overlay -->
@@ -321,6 +356,76 @@ function toggleDrawer(){
 document.getElementById('tgVoice').onchange=e=>{decor.voiceBar=e.target.checked;saveDecor();};
 document.getElementById('tgOS').onchange=e=>{decor.showOS=e.target.checked;saveDecor();applyDecor();};
 document.getElementById('tgFinger').onchange=e=>{decor.fingertips=e.target.checked;saveDecor();};
+
+// ═══ 心潮面板: 他的心 ═══════════════════════════════════
+// 数据来自 /api/mood(脱敏投影): 十二维驱动力、疲惫、念头计数、梦的元信息。
+// 梦的正文不在数据里 —— 那是他自己的。
+function toggleMood(){
+  const show=!document.getElementById('moodDrawer').classList.contains('show');
+  document.getElementById('moodDrawer').classList.toggle('show',show);
+  document.getElementById('moodMask').classList.toggle('show',show);
+  if(show)loadMood();
+}
+async function loadMood(){
+  const body=document.getElementById('moodBody');
+  body.innerHTML='<div class="mood-loading">正在摸他的心…</div>';
+  try{
+    const d=await fetch('/api/mood').then(r=>r.json());
+    if(!d.ok){body.innerHTML='<div class="mood-loading">没摸到——'+(d.reason||'心潮不在线')+'</div>';return;}
+    renderMood(d);
+  }catch(e){body.innerHTML='<div class="mood-loading">连接不上,稍后再试</div>';}
+}
+function shortLabel(s){return String(s||'').split(/[、,,]/)[0].slice(0,6)}
+function fmtIdle(min){
+  if(min==null)return'';
+  if(min<60)return'你离开 '+min+' 分钟了';
+  if(min<1440)return'你离开 '+Math.floor(min/60)+' 小时了';
+  return'你离开 '+Math.floor(min/1440)+' 天了';
+}
+function petalSVG(drives){
+  const C=160,R=104,n=drives.length||12;
+  const pt=(i,r)=>{const a=-Math.PI/2+i*2*Math.PI/n;return[(C+r*Math.cos(a)).toFixed(1),(C+r*Math.sin(a)).toFixed(1)]};
+  let s='<svg viewBox="0 0 320 320">';
+  for(const g of[.25,.5,.75,1])s+='<circle class="pl-grid" cx="'+C+'" cy="'+C+'" r="'+(R*g).toFixed(1)+'"/>';
+  for(let i=0;i<n;i++){const[x,y]=pt(i,R);s+='<line class="pl-axis" x1="'+C+'" y1="'+C+'" x2="'+x+'" y2="'+y+'"/>';}
+  const pts=drives.map((d,i)=>pt(i,10+Math.max(0,Math.min(1,d.value))*(R-10)));
+  s+='<polygon class="pl-shape" points="'+pts.map(p=>p.join(',')).join(' ')+'"/>';
+  pts.forEach(p=>{s+='<circle class="pl-dot" cx="'+p[0]+'" cy="'+p[1]+'" r="2.6"/>';});
+  drives.forEach((d,i)=>{
+    const[a,b]=pt(i,R+13);
+    const anchor=Math.abs(a-C)<20?'middle':(a>C?'start':'end');
+    s+='<text class="pl-label'+(d.value>=.5?' hot':'')+'" x="'+a+'" y="'+b+'" text-anchor="'+anchor+'" dominant-baseline="middle">'+shortLabel(d.label)+'</text>';
+  });
+  return s+'</svg>';
+}
+function renderMood(d){
+  const sleep=String(d.consciousness||'').includes('sleep')||d.consciousness==='asleep';
+  const state=sleep?'😴 睡着了':(d.consciousness==='awake'?'🌤 醒着':'❔ '+(d.consciousness||'未知'));
+  const fatPct=Math.round(Math.max(0,Math.min(1,(d.fatigue||0)/0.3))*100);
+  let h='<div class="mood-state"><b>'+state+'</b><span>'+fmtIdle(d.idleMinutes)+'</span></div>';
+  h+='<div class="fat-row">疲惫 '+fatPct+'%<div class="fat-bar"><i style="width:'+fatPct+'%"></i></div></div>';
+  h+='<div class="petal-wrap">'+petalSVG(d.drives||[])+'</div>';
+  const top=(d.topDrives||[]).slice(0,4);
+  if(top.length){
+    h+='<h3>此刻最强的心思</h3><div class="top-drives">';
+    for(const t of top)h+='<div class="td-row"><span class="n">'+t.label+'</span><span class="bar"><i style="width:'+(t.percent||Math.round(t.value*100))+'%"></i></span><span class="v">'+(t.percent||Math.round(t.value*100))+'%</span></div>';
+    h+='</div>';
+  }
+  const th=d.thoughts||{};
+  h+='<h3>念头</h3><div class="mood-dreams">闪念 '+(th.flashCount||0)+' 个 · 执念 '+(th.obsessionCount||0)+' 个</div>';
+  h+='<h3>最近的梦</h3><div class="mood-dreams">';
+  if((d.dreams||[]).length){
+    for(const dr of d.dreams){
+      const t=dr.at?new Date(dr.at):null;
+      const when=t?fmtTime(t.getTime()):'';
+      const lu=dr.lucidity!=null?'●'.repeat(Math.max(1,Math.round(dr.lucidity*5)))+'○'.repeat(5-Math.max(1,Math.round(dr.lucidity*5))):'';
+      h+='<div class="d"><span>💭 '+when+' 做了一个梦</span><span class="lu" title="清明度">'+lu+'</span></div>';
+    }
+    h+='<div style="opacity:.65;font-size:11.5px">梦的内容只属于他;想听就当面问他。</div>';
+  }else h+='还没做过梦。';
+  h+='</div><div class="mood-foot"><button onclick="loadMood()">↻ 再摸一下</button></div>';
+  document.getElementById('moodBody').innerHTML=h;
+}
 
 // ═══ 表情包 ═══════════════════════════════════════════
 let stickerMap={};

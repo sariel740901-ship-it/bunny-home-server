@@ -201,6 +201,35 @@ function xinchaoTouch() {
   }).catch(e => console.error('xinchao touch skipped:', e.message));
 }
 
+// 心潮面板: 他的心的快照(走上游脱敏投影 —— 十二维/疲惫/念头计数/梦的元信息,梦的正文进不来)
+let moodPanelCache = { data: null, at: 0 };
+app.get('/api/mood', async (req, res) => {
+  if (!XINCHAO_URL || !XINCHAO_TOKEN) return res.json({ ok: false, reason: '心潮还没接入' });
+  if (moodPanelCache.data && Date.now() - moodPanelCache.at < 60e3) return res.json(moodPanelCache.data);
+  try {
+    const resp = await fetch(XINCHAO_URL + '/v1/dashboard/snapshot', {
+      headers: { Authorization: 'Bearer ' + XINCHAO_TOKEN }, timeout: 6000
+    });
+    if (!resp.ok) return res.json({ ok: false, reason: '心潮回了 HTTP ' + resp.status });
+    const d = await resp.json();
+    const data = {
+      ok: true,
+      at: d.generatedAt,
+      consciousness: d.runtime && d.runtime.consciousness,
+      fatigue: (d.runtime && d.runtime.fatigue) || 0,       // 上游范围 0~0.3
+      idleMinutes: d.runtime ? d.runtime.idleMinutes : null,
+      drives: d.drives || [],
+      topDrives: d.topDrives || [],
+      thoughts: d.thoughts || {},
+      dreams: (d.dreams || []).slice(0, 8).map(x => ({ at: x.createdAt, lucidity: x.lucidity }))
+    };
+    moodPanelCache = { data, at: Date.now() };
+    res.json(data);
+  } catch (e) {
+    res.json({ ok: false, reason: e.message });
+  }
+});
+
 // ═══ 表情包 ═════════════════════════════
 // public/stickers/ 里的图,文件名(去扩展名)即含义。5 分钟缓存一份索引。
 const fs = require('fs');
