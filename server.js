@@ -600,8 +600,9 @@ function imgToText(text) {
 }
 
 // 他的眼睛: DeepSeek 不认图,图先经 Gemini 看一遍,把看到的讲给他
-const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// key 去掉误粘的引号/空白 —— 400 API_KEY_INVALID 十有八九是这个
+const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+const GEMINI_MODEL = ((process.env.GEMINI_MODEL || '').trim() || 'gemini-2.5-flash');
 async function describeImage(dataUrl) {
   if (!GEMINI_KEY) return '';
   const m = String(dataUrl || '').match(/^data:(image\/[a-z]+);base64,(.+)$/);
@@ -621,7 +622,11 @@ async function describeImage(dataUrl) {
         timeout: 20000
       }
     );
-    if (!resp.ok) { console.error('vision http ' + resp.status); return ''; }
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '');
+      console.error('vision http ' + resp.status + ': ' + errBody.replace(/\s+/g, ' ').slice(0, 300));
+      return '';
+    }
     const d = await resp.json();
     return String((d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('')).trim().slice(0, 600);
   } catch (e) {
