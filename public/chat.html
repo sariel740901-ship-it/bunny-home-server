@@ -547,9 +547,12 @@ async function loadMood(){
   const body=document.getElementById('moodBody');
   body.innerHTML='<div class="mood-loading">正在摸他的心…</div>';
   try{
-    const d=await fetch('/api/mood').then(r=>r.json());
+    const [d,tl]=await Promise.all([
+      fetch('/api/mood').then(r=>r.json()),
+      fetch('/api/mood/timeline').then(r=>r.json()).catch(()=>({items:[]}))
+    ]);
     if(!d.ok){body.innerHTML='<div class="mood-loading">没摸到——'+(d.reason||'心潮不在线')+'</div>';return;}
-    renderMood(d);
+    renderMood(d,(tl&&tl.items)||[]);
   }catch(e){body.innerHTML='<div class="mood-loading">连接不上,稍后再试</div>';}
 }
 function shortLabel(s){return String(s||'').split(/[、,,]/)[0].slice(0,6)}
@@ -575,7 +578,7 @@ function petalSVG(drives){
   });
   return s+'</svg>';
 }
-function renderMood(d){
+function renderMood(d,timeline){
   const sleep=String(d.consciousness||'').includes('sleep')||d.consciousness==='asleep';
   const state=sleep?'😴 睡着了':(d.consciousness==='awake'?'🌤 醒着':'❔ '+(d.consciousness||'未知'));
   const fatPct=Math.round(Math.max(0,Math.min(1,(d.fatigue||0)/0.3))*100);
@@ -598,9 +601,19 @@ function renderMood(d){
       const lu=dr.lucidity!=null?'●'.repeat(Math.max(1,Math.round(dr.lucidity*5)))+'○'.repeat(5-Math.max(1,Math.round(dr.lucidity*5))):'';
       h+='<div class="d"><span>'+when+' 做了一个梦</span><span class="lu" title="清明度">'+lu+'</span></div>';
     }
-    h+='<div style="opacity:.65;font-size:11.5px">梦的内容只属于他;想听就当面问他。</div>';
+    h+='<div style="opacity:.65;font-size:11.5px">想听梦的内容就当面问他——现在他记得。</div>';
   }else h+='还没做过梦。';
-  h+='</div><div class="mood-foot"><button onclick="loadMood()">再摸一下</button></div>';
+  h+='</div>';
+  // 他最近的心事: 心潮的结构化时间线(睡着/醒来/做梦/想她/浮现/便签)
+  if(timeline&&timeline.length){
+    h+='<h3>他最近的心事</h3><div class="mood-dreams">';
+    for(const ev of timeline.slice(0,10)){
+      const t=ev.at?fmtTime(new Date(ev.at).getTime()):'';
+      h+='<div class="d"><span>'+String(ev.text||'')+'</span><span style="opacity:.7">'+t+'</span></div>';
+    }
+    h+='</div>';
+  }
+  h+='<div class="mood-foot"><button onclick="loadMood()">再摸一下</button></div>';
   document.getElementById('moodBody').innerHTML=h;
 }
 

@@ -292,6 +292,39 @@ app.get('/api/mood', async (req, res) => {
   }
 });
 
+// 他最近的心事: 走心潮 2.4 的 Transition Journal 只读时间线(脱敏,只有结构化事件)。
+// 翻译成人话: 什么时候睡着/醒来、做了梦、想她想到主动留言、白天忽然想起事。
+let moodTimelineCache = { data: null, at: 0 };
+app.get('/api/mood/timeline', async (req, res) => {
+  if (!XINCHAO_URL || !XINCHAO_TOKEN) return res.json({ ok: false, items: [] });
+  if (moodTimelineCache.data && Date.now() - moodTimelineCache.at < 60e3) return res.json(moodTimelineCache.data);
+  try {
+    const resp = await fetch(XINCHAO_URL + '/v1/dashboard/timeline?limit=60', {
+      headers: { Authorization: 'Bearer ' + XINCHAO_TOKEN }, timeout: 6000
+    });
+    if (!resp.ok) return res.json({ ok: false, items: [] });
+    const d = await resp.json();
+    const items = [];
+    for (const it of (d.items || [])) { // 上游已按新→旧返回
+      const cons = it.delta && it.delta.consciousness;
+      let text = '';
+      if (cons && cons.to === 'sleeping') text = '睡着了';
+      else if (cons && cons.to === 'awake') text = '醒来了';
+      else if (it.type === 'dream_recorded') text = '做了一个梦';
+      else if (it.type === 'bark_sent') text = (it.details && it.details.kind === 'dream') ? '把梦醒的心情推给了你' : '想你了,主动留了言';
+      else if (it.type === 'daytime_emergence_sent') text = '白天忽然想起了一件事';
+      else if (it.type === 'handoff_note') text = '给下一个窗口留了张便签';
+      if (text) items.push({ at: it.at, text });
+      if (items.length >= 12) break;
+    }
+    const data = { ok: true, items };
+    moodTimelineCache = { data, at: Date.now() };
+    res.json(data);
+  } catch (e) {
+    res.json({ ok: false, items: [] });
+  }
+});
+
 // ═══ 表情包 ═════════════════════════════
 // public/stickers/ 里的图,文件名(去扩展名)即含义。5 分钟缓存一份索引。
 const fs = require('fs');
