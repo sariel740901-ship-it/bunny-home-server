@@ -161,6 +161,8 @@ body.hide-os .os{display:none}
 .think-hd:hover{color:var(--accent);border-color:var(--accent)}
 .think-hd.has-sum{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;border:none;border-left:2px solid var(--border);border-radius:0;padding:1px 2px 1px 10px;font-size:12.5px;line-height:1.65}
 .think-hd.has-sum:hover{border-color:var(--accent)}
+/* 本轮用到的工具小标记 */
+.tused{margin:1px 0 6px;font-size:11px;color:var(--muted);opacity:.75;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif}
 .tool-row b{font-weight:600;white-space:nowrap}
 .tool-row .td{flex:1;color:var(--muted);font-size:12px;line-height:1.5}
 .tool-row .st{font-size:11.5px;white-space:nowrap;color:var(--muted)}
@@ -296,7 +298,6 @@ body.hide-os .os{display:none}
   <h3>我的头像</h3>
   <div class="avrow" id="myAvRow"></div>
   <h3>开关</h3>
-  <div class="togglerow"><div>他的语音条<small>他的消息带一条可播放的语音</small></div><label class="tg"><input type="checkbox" id="tgVoice"><i></i></label></div>
   <div class="togglerow"><div>心声<small>他回复末尾那句没说出口的心思</small></div><label class="tg"><input type="checkbox" id="tgOS"><i></i></label></div>
   <div class="togglerow" style="border-bottom:none"><div>指尖<small>让他感知你打字的犹豫(只传节奏,不传内容)</small></div><label class="tg"><input type="checkbox" id="tgFinger"><i></i></label></div>
 </div>
@@ -358,7 +359,7 @@ const BGS={
 };
 const MY_BUBS=['#d97757','#e898a4','#95ec69','#7489b4','#b48ac9','#f0eee5'];
 const HIS_BUBS=['default','#ffffff','#fbe9ec','#e8edf7','#effae9','#f5eedd'];
-let decor={bg:'默认',myBub:'#d97757',hisBub:'default',kAv:'none',myAv:'none',title:'Bunny Home',voiceBar:!0,showOS:!0,fingertips:!0,tools:{}};
+let decor={bg:'默认',myBub:'#d97757',hisBub:'default',kAv:'none',myAv:'none',title:'Bunny Home',showOS:!0,fingertips:!0,tools:{}};
 try{Object.assign(decor,JSON.parse(localStorage.getItem(DECOR_KEY)||'{}'))}catch(e){}
 // 旧版的 emoji 头像不再支持 —— 没上传图片就不显示头像
 if(String(decor.kAv||'').startsWith('emoji:'))decor.kAv='none';
@@ -420,7 +421,6 @@ function buildDrawer(){
   nameInp.oninput=()=>{decor.title=nameInp.value.trim()||'Bunny Home';saveDecor();applyDecor();};
   buildAvRow(document.getElementById('kAvRow'),'kAv');
   buildAvRow(document.getElementById('myAvRow'),'myAv');
-  document.getElementById('tgVoice').checked=decor.voiceBar;
   document.getElementById('tgOS').checked=decor.showOS;
   document.getElementById('tgFinger').checked=decor.fingertips;
 }
@@ -486,7 +486,13 @@ function toggleTools(){
   document.getElementById('toolArrow').textContent=open?'收起':'展开';
   if(open&&!toolsLoaded)loadTools();
 }
-function toolOn(key){return !decor.tools||decor.tools[key]!==!1}
+// 声音默认关(语音额度金贵),其他工具默认开
+const TOOLS_OFF_BY_DEFAULT=['voice'];
+function toolOn(key){
+  const v=decor.tools&&decor.tools[key];
+  if(v===undefined)return !TOOLS_OFF_BY_DEFAULT.includes(key);
+  return v!==!1;
+}
 function toolsOffList(extra){
   const off=[];
   if(decor.tools)for(const k in decor.tools)if(decor.tools[k]===!1)off.push(k);
@@ -525,7 +531,6 @@ function togglePlus(){
   document.getElementById('stkpanel').classList.remove('show');
   document.getElementById('pluspanel').classList.toggle('show');
 }
-document.getElementById('tgVoice').onchange=e=>{decor.voiceBar=e.target.checked;saveDecor();};
 document.getElementById('tgOS').onchange=e=>{decor.showOS=e.target.checked;saveDecor();applyDecor();};
 document.getElementById('tgFinger').onchange=e=>{decor.fingertips=e.target.checked;saveDecor();};
 
@@ -667,6 +672,13 @@ function splitThink(content){
   if(!m)return {think:'',sum,rest:content};
   return {think:m[1].trim(),sum,rest:content.slice(m[0].length)};
 }
+// 工具标记: 摘出 [tools]本轮用了什么[/tools]
+function splitTools(content){
+  content=String(content==null?'':content);
+  const m=content.match(/^\s*\[tools\]([\s\S]*?)\[\/tools\]\s*/);
+  if(!m)return {tools:'',rest:content};
+  return {tools:m[1].trim(),rest:content.slice(m[0].length)};
+}
 // 内心OS: 摘出 [os:...] 那句没说出口的
 // 模型偶尔不把它放最末尾(比如表情包压轴),所以全文找,取最后一处显示
 function splitOS(content){
@@ -689,7 +701,8 @@ function closeThink(){
 // live=true 是刚说的这句;历史消息不挂语音条,免得翻记录就烧掉语音额度
 function fillAssistant(parts,content,live){
   const {think,sum,rest}=splitThink(content);
-  const {text,os}=splitOS(rest);
+  const {tools,rest:rest2}=splitTools(rest);
+  const {text,os}=splitOS(rest2);
   const bub=parts.bub;bub.innerHTML='';
   const stickerOnly=/^\s*\[sticker:[^\]]+\]\s*$/.test(text);
   bub.classList.toggle('sticker-only',stickerOnly);
@@ -701,8 +714,13 @@ function fillAssistant(parts,content,live){
     hd.onclick=()=>openThink(think||sum);
     tk.appendChild(hd);bub.appendChild(tk);
   }
+  // 工具标记: 这一轮他真实用到的(记住是否写进记忆库,一眼可见)
+  if(tools&&!stickerOnly){
+    const tu=document.createElement('div');tu.className='tused';tu.textContent=tools;
+    bub.appendChild(tu);
+  }
   const speech=stickerOnly?'':text.replace(/\[sticker:[^\]]+\]/g,' ').trim();
-  if(decor.voiceBar&&speech&&live){
+  if(toolOn('voice')&&speech&&live){
     const vb=document.createElement('div');vb.className='vbar';
     vb.innerHTML='<span class="waves"><i></i><i></i><i></i><i></i><i></i></span><span class="vdur">'+estDur(speech)+'"</span>';
     vb.onclick=()=>playVoice(vb,speech);
@@ -1043,8 +1061,8 @@ function showZhSubtitle(text){
 }
 
 async function speakAsync(text){
-  // 思考链、表情包暗号和心声 [os:...] 不朗读、不进字幕
-  text=String(text||'').replace(/\[tsum\][\s\S]*?\[\/tsum\]/g,' ').replace(/\[think\][\s\S]*?\[\/think\]/g,' ').replace(/\[sticker:[^\]]+\]/g,' ').replace(/\[os:[\s\S]*?\]/g,' ').trim();
+  // 思考链、工具标记、表情包暗号和心声 [os:...] 不朗读、不进字幕
+  text=String(text||'').replace(/\[tsum\][\s\S]*?\[\/tsum\]/g,' ').replace(/\[think\][\s\S]*?\[\/think\]/g,' ').replace(/\[tools\][\s\S]*?\[\/tools\]/g,' ').replace(/\[sticker:[^\]]+\]/g,' ').replace(/\[os:[\s\S]*?\]/g,' ').trim();
   if(!text)return;
   speakQueue=splitForTTS(text);
   showZhSubtitle(text);
