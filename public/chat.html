@@ -672,6 +672,14 @@ function splitThink(content){
   if(!m)return {think:'',sum,rest:content};
   return {think:m[1].trim(),sum,rest:content.slice(m[0].length)};
 }
+// 这段话需要翻译吗: 数汉字和外文字符(拉丁/假名/谚文/西里尔),
+// 中文占主导就不用译,外文占大头才需要
+function needsTrans(t){
+  t=String(t||'');
+  const zh=(t.match(/[一-鿿]/g)||[]).length;
+  const fo=(t.match(/[A-Za-z぀-ヿ가-힯Ѐ-ӿ]/g)||[]).length;
+  return fo>=2&&fo>zh;
+}
 // 工具标记: 摘出 [tools]本轮用了什么[/tools]
 function splitTools(content){
   content=String(content==null?'':content);
@@ -733,8 +741,8 @@ function fillAssistant(parts,content,live){
     o.appendChild(s);o.onclick=()=>o.classList.toggle('collapsed');
     bub.appendChild(o);
   }
-  // 译: 他说英文,点一下展开中文
-  if(speech&&/[a-zA-Z]{2}/.test(speech)){
+  // 译: 中文为主的回复不用译;英文(或其他外文)占大头才出现按钮
+  if(speech&&needsTrans(speech)){
     const meta=document.createElement('div');meta.className='meta';
     const btn=document.createElement('span');btn.className='tbtn';btn.textContent='译';
     const out=document.createElement('div');out.className='tout';
@@ -1053,7 +1061,7 @@ async function playBuf(arrayBuf){
 let zhLock=!1;
 function showZhSubtitle(text){
   zhLock=!1;
-  if(!/[a-zA-Z]{2}/.test(text))return; // 本来就是中文就不用翻
+  if(!needsTrans(text))return; // 本来就是中文为主就不用翻
   fetch('/api/translate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})})
     .then(r=>r.json())
     .then(d=>{if(d.zh&&callOpen){zhLock=!0;document.getElementById('callSubtitle').textContent=d.zh}})
