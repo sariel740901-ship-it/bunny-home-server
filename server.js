@@ -356,7 +356,7 @@ app.get('/api/tools', (req, res) => {
     { key: 'hold', name: '记住指令', desc: '以「记住」开头的话直接写进记忆库', on: ombreOn, switch: true },
     { key: 'mood', name: '心潮', desc: '聊天时带上他此刻的心绪起伏', on: !!(XINCHAO_URL && XINCHAO_TOKEN), switch: true },
     { key: 'stickers', name: '表情包', desc: listStickers().length + ' 张可用', on: listStickers().length > 0, switch: true },
-    { key: 'voice', name: '声音', desc: '语音条和通话里他的声音', on: !!process.env.XI_API_KEY },
+    { key: 'voice', name: '声音', desc: '给新消息挂可点播的语音条(默认关,省额度;通话不受影响)', on: !!process.env.XI_API_KEY, switch: true },
     { key: 'translate', name: '翻译', desc: '英文回复一键看中文', on: !!API_KEY },
     { key: 'heartbeat', name: '心跳留言', desc: '你沉默太久时他主动留言', on: !!HEARTBEAT_TOKEN },
     { key: 'bark', name: '锁屏推送', desc: '留言同步推到手机锁屏 (Bark)', on: !!process.env.BARK_URL },
@@ -421,12 +421,14 @@ app.get('/api/settings', async (req, res) => {
 });
 
 // ═══ 核心对话 ═════════════════════════════
-// 存进消息里的思考链标记: [tsum]小结[/tsum][think]原思考[/think] 开头。
+// 存进消息里的标记: [tsum]小结[/tsum][think]原思考[/think][tools]本轮用了什么[/tools] 开头。
 // 拼上下文/反思/朗读时都要剥掉。
 function stripThink(text) {
   return String(text == null ? '' : text)
     .replace(/\[tsum\][\s\S]*?\[\/tsum\]/g, '')
-    .replace(/\[think\][\s\S]*?\[\/think\]\n?/g, '');
+    .replace(/\[think\][\s\S]*?\[\/think\]/g, '')
+    .replace(/\[tools\][\s\S]*?\[\/tools\]\n?/g, '')
+    .replace(/^\n/, '');
 }
 
 app.post('/api/chat', async (req, res) => {
@@ -459,10 +461,12 @@ app.post('/api/chat', async (req, res) => {
 
     // 2.5 「记住」指令: 以"记住"开头的消息写入 OB 记忆河
     let holdNote = '';
+    let holdSaved = null; // null=本轮没触发, true/false=写入结果(给界面的工具标记用)
     const holdMatch = toolsOff.has('hold') ? null : message.match(/^记住[:：,，、\s]*([\s\S]+)/);
     if (holdMatch) {
       const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // 北京时间
       const saved = await ombreHold(today + ' 她在bunny的家里让小克记住: ' + holdMatch[1].trim());
+      holdSaved = saved;
       holdNote = saved
         ? '\n\n【系统】她刚才让你记住的事已成功写入你们共同的记忆库。回复时自然地确认你记下了,不要提"系统"或"数据库"。'
         : '\n\n【系统】她让你记住一件事,但记忆库此刻不在线,没有写入成功。温和地告诉她:等家里电脑开着的时候再跟你说一次,你一定记牢。';
@@ -575,9 +579,20 @@ app.post('/api/chat', async (req, res) => {
         if (sresp.ok) thinkSum = String(sdata.choices?.[0]?.message?.content || '').trim();
       } catch (e) { console.error('think summary skipped:', e.message); }
     }
+    // 本轮真实用到的工具,给界面一行小标记(尤其"记住"有没有写进去,一眼可见)
+    const used = [];
+    if (holdSaved === true) used.push('记住:已写入记忆库');
+    if (holdSaved === false) used.push('记住:没写成,记忆库不在线');
+    if (ombreMemText) used.push('记忆河');
+    if (surfacedText) used.push('自然浮现');
+    if (moodText) used.push('心潮');
+
     const reply = (reasoning
-      ? (thinkSum ? '[tsum]' + thinkSum + '[/tsum]' : '') + '[think]' + reasoning.slice(0, 3000) + '[/think]\n'
-      : '') + (data.choices?.[0]?.message?.content || '(空)');
+      ? (thinkSum ? '[tsum]' + thinkSum + '[/tsum]' : '') + '[think]' + reasoning.slice(0, 3000) + '[/think]'
+      : '')
+      + (used.length ? '[tools]' + used.join(' · ') + '[/tools]' : '')
+      + (reasoning || used.length ? '\n' : '')
+      + (data.choices?.[0]?.message?.content || '(空)');
 
     // 7. 存入 AI 回复,并把会话顶到列表最前
     if (session_id) {
