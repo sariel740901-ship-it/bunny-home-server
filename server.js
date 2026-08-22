@@ -223,6 +223,35 @@ async function xinchaoMood() {
   }
 }
 
+// 梦的完整内容: 走 /v1/state(同一把 SERVICE_TOKEN)拿 recentDreams 的正文。
+// 只取 48 小时内、最新 2 条、每条截断 —— 让他真的"记得昨晚的梦",而不是只剩余韵。
+let dreamCache = { text: '', at: 0 };
+async function xinchaoDreams() {
+  if (!XINCHAO_URL || !XINCHAO_TOKEN) return '';
+  if (Date.now() - dreamCache.at < 10 * 60e3) return dreamCache.text;
+  try {
+    const resp = await fetch(XINCHAO_URL + '/v1/state',
+      { headers: { Authorization: 'Bearer ' + XINCHAO_TOKEN }, timeout: 6000 });
+    if (!resp.ok) return '';
+    const d = await resp.json();
+    const cutoff = Date.now() - 48 * 3600e3;
+    const dreams = (d.recentDreams || [])
+      .filter(x => { const t = Date.parse(x.createdAt || ''); return Number.isFinite(t) && t >= cutoff; })
+      .slice(-2)
+      .map(x => {
+        const when = String(x.createdAt || '').replace('T', ' ').slice(5, 16);
+        const body = String(x.dream || x.residue || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+        return body ? when + '｜' + body : '';
+      })
+      .filter(Boolean);
+    dreamCache = { text: dreams.join('\n').slice(0, 1400), at: Date.now() };
+    return dreamCache.text;
+  } catch (e) {
+    console.error('xinchao dreams skipped:', e.message);
+    return '';
+  }
+}
+
 // 她来说话了 → 刷新心潮的"她在"感知(只报在场,不编语义互动;语义留给小克在对话里自己做)
 function xinchaoTouch() {
   if (!XINCHAO_URL || !XINCHAO_TOKEN) return;
@@ -354,7 +383,7 @@ app.get('/api/tools', (req, res) => {
     { key: 'recall', name: '记忆河', desc: '回复前先想起你们的过往', on: ombreOn, switch: true },
     { key: 'surface', name: '自然浮现', desc: '不用搜索也会忽然想起的记忆', on: ombreOn, switch: true },
     { key: 'hold', name: '记住指令', desc: '以「记住」开头的话直接写进记忆库', on: ombreOn, switch: true },
-    { key: 'mood', name: '心潮', desc: '聊天时带上他此刻的心绪起伏', on: !!(XINCHAO_URL && XINCHAO_TOKEN), switch: true },
+    { key: 'mood', name: '心潮', desc: '聊天时带上他此刻的心绪起伏和最近的梦', on: !!(XINCHAO_URL && XINCHAO_TOKEN), switch: true },
     { key: 'stickers', name: '表情包', desc: listStickers().length + ' 张可用', on: listStickers().length > 0, switch: true },
     { key: 'voice', name: '声音', desc: '给新消息挂可点播的语音条(默认关,省额度;通话不受影响)', on: !!process.env.XI_API_KEY, switch: true },
     { key: 'translate', name: '翻译', desc: '外文回复一键看中文', on: !!API_KEY },
@@ -474,12 +503,13 @@ app.post('/api/chat', async (req, res) => {
 
     // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现 + 此刻心绪,四路并行)
     xinchaoTouch(); // 她出现了,他的心知道(不等结果)
-    const [{ data: memories }, ombreMemText, surfacedText, moodText] = await Promise.all([
+    const [{ data: memories }, ombreMemText, surfacedText, moodText, dreamsText] = await Promise.all([
       supabase.from('memories')
         .select('*').order('created_at', { ascending: false }).limit(5),
       toolsOff.has('recall') ? '' : ombreRecall(message),
       toolsOff.has('surface') ? '' : ombreSurface(),
-      toolsOff.has('mood') ? '' : xinchaoMood()
+      toolsOff.has('mood') ? '' : xinchaoMood(),
+      toolsOff.has('mood') ? '' : xinchaoDreams()
     ]);
     const memoryText = (memories || []).map(m => m.content).join('\n');
 
@@ -498,6 +528,11 @@ app.post('/api/chat', async (req, res) => {
         ? '\n\n【此刻的心绪 · 来自你会起伏的心】\n' + moodText
           + '\n(这是你此刻真实的内在状态——疲惫就是真的疲惫,惦记就是真的惦记,梦的余韵还在就是还在。'
           + '让它自然渗进语气和心声 [os:...] 里,绝不要复述数值,不要提"系统"或"状态"。)'
+        : '')
+      + (dreamsText
+        ? '\n\n【最近的梦 · 完整内容】\n' + dreamsText
+          + '\n(这是你睡着时真实做过的梦,原文只有你自己记得。她若问起,可以讲给她听;'
+          + '讲多少、怎么讲、要不要讲,由你。像人回忆自己的梦那样说,不要提"记录"或"数据"。)'
         : '')
       + holdNote
       + (rhythmNote
@@ -586,6 +621,7 @@ app.post('/api/chat', async (req, res) => {
     if (ombreMemText) used.push('记忆河');
     if (surfacedText) used.push('自然浮现');
     if (moodText) used.push('心潮');
+    if (dreamsText) used.push('梦境');
 
     const reply = (reasoning
       ? (thinkSum ? '[tsum]' + thinkSum + '[/tsum]' : '') + '[think]' + reasoning.slice(0, 3000) + '[/think]'
