@@ -1,0 +1,16 @@
+# 放到 xinchao-nian 仓库根目录(和它自带的 compose.yaml 并排)。
+# 咱家走"最小升级": 只跑这包里的心潮 3.x 引擎,OB 继续用家里的原版 ——
+# 所以不用它自带的联合 compose,用这份单跑的。
+# 启动: docker compose -f compose.solo.yaml up -d --build
+services:
+  xinchao:
+    build: ./xinchao
+    env_file: .env
+    ports:
+      - "18110:18110"   # 全接口,隧道容器才够得着;对外安全靠隧道 + MCP_PATH_TOKEN
+    volumes:
+      - ./state:/app/state            # 他的心绪史/梦/性格内核/锚点,全在这
+      - ./memory-data:/memory-data    # OB 心跳文件
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
