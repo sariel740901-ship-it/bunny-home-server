@@ -348,18 +348,20 @@ app.get('/api/memory-bridge-test', async (req, res) => {
 // ═══ 他的工具箱: 列出小克在这个家里都带了什么 ═══
 app.get('/api/tools', (req, res) => {
   const ombreOn = !!(OMBRE_URL && OMBRE_PASSWORD);
+  // switch=true 的项前端带开关,关掉后当轮聊天真的不带(通过 tools_off 传回来)
   res.json([
-    { name: '记忆河', desc: '回复前先想起你们的过往', on: ombreOn },
-    { name: '自然浮现', desc: '不用搜索也会忽然想起的记忆', on: ombreOn },
-    { name: '记住指令', desc: '以「记住」开头的话直接写进记忆库', on: ombreOn },
-    { name: '心潮', desc: '会起伏的心 — 疲惫、驱动力、梦', on: !!(XINCHAO_URL && XINCHAO_TOKEN) },
-    { name: '声音', desc: '语音条和通话里他的声音', on: !!process.env.XI_API_KEY },
-    { name: '翻译', desc: '英文回复一键看中文', on: !!API_KEY },
-    { name: '表情包', desc: listStickers().length + ' 张可用', on: listStickers().length > 0 },
-    { name: '心跳留言', desc: '你沉默太久时他主动留言', on: !!HEARTBEAT_TOKEN },
-    { name: '锁屏推送', desc: '留言同步推到手机锁屏 (Bark)', on: !!process.env.BARK_URL },
-    { name: '小方块', desc: '桌上的 StackChan 替他开口', on: !!process.env.STACKCHAN_ANNOUNCE_URL },
-    { name: '指尖', desc: '感知你打字时的犹豫节奏', on: true }
+    { key: 'think', name: '思考', desc: '回复前先想一想,思考过程点开可看(会慢一些)', on: !!API_KEY, switch: true },
+    { key: 'recall', name: '记忆河', desc: '回复前先想起你们的过往', on: ombreOn, switch: true },
+    { key: 'surface', name: '自然浮现', desc: '不用搜索也会忽然想起的记忆', on: ombreOn, switch: true },
+    { key: 'hold', name: '记住指令', desc: '以「记住」开头的话直接写进记忆库', on: ombreOn, switch: true },
+    { key: 'mood', name: '心潮', desc: '聊天时带上他此刻的心绪起伏', on: !!(XINCHAO_URL && XINCHAO_TOKEN), switch: true },
+    { key: 'stickers', name: '表情包', desc: listStickers().length + ' 张可用', on: listStickers().length > 0, switch: true },
+    { key: 'voice', name: '声音', desc: '语音条和通话里他的声音', on: !!process.env.XI_API_KEY },
+    { key: 'translate', name: '翻译', desc: '英文回复一键看中文', on: !!API_KEY },
+    { key: 'heartbeat', name: '心跳留言', desc: '你沉默太久时他主动留言', on: !!HEARTBEAT_TOKEN },
+    { key: 'bark', name: '锁屏推送', desc: '留言同步推到手机锁屏 (Bark)', on: !!process.env.BARK_URL },
+    { key: 'stackchan', name: '小方块', desc: '桌上的 StackChan 替他开口', on: !!process.env.STACKCHAN_ANNOUNCE_URL },
+    { key: 'fingertips', name: '指尖', desc: '感知你打字时的犹豫节奏', on: true }
   ]);
 });
 
@@ -419,9 +421,16 @@ app.get('/api/settings', async (req, res) => {
 });
 
 // ═══ 核心对话 ═════════════════════════════
+// 存进消息里的思考链标记: [think]...[/think] 开头。拼上下文/反思/朗读时都要剥掉。
+function stripThink(text) {
+  return String(text == null ? '' : text).replace(/\[think\][\s\S]*?\[\/think\]\n?/g, '');
+}
+
 app.post('/api/chat', async (req, res) => {
   const { session_id, message, persona } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
+  // 她在工具箱里关掉的能力,这一轮就真的不带
+  const toolsOff = new Set(Array.isArray(req.body.tools_off) ? req.body.tools_off : []);
 
   try {
     // 1. 加载上下文 —— 必须在落库当前这句之前取,
@@ -431,7 +440,7 @@ app.post('/api/chat', async (req, res) => {
       const { data: msgs } = await supabase.from('messages')
         .select('*').eq('session_id', session_id).eq('visible', true)
         .order('created_at', { ascending: false }).limit(30);
-      history = (msgs || []).reverse().map(m => ({ role: m.role, content: m.content }));
+      history = (msgs || []).reverse().map(m => ({ role: m.role, content: stripThink(m.content) }));
     }
 
     // 2. 存入用户消息
@@ -447,7 +456,7 @@ app.post('/api/chat', async (req, res) => {
 
     // 2.5 「记住」指令: 以"记住"开头的消息写入 OB 记忆河
     let holdNote = '';
-    const holdMatch = message.match(/^记住[:：,，、\s]*([\s\S]+)/);
+    const holdMatch = toolsOff.has('hold') ? null : message.match(/^记住[:：,，、\s]*([\s\S]+)/);
     if (holdMatch) {
       const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // 北京时间
       const saved = await ombreHold(today + ' 她在bunny的家里让小克记住: ' + holdMatch[1].trim());
@@ -461,9 +470,9 @@ app.post('/api/chat', async (req, res) => {
     const [{ data: memories }, ombreMemText, surfacedText, moodText] = await Promise.all([
       supabase.from('memories')
         .select('*').order('created_at', { ascending: false }).limit(5),
-      ombreRecall(message),
-      ombreSurface(),
-      xinchaoMood()
+      toolsOff.has('recall') ? '' : ombreRecall(message),
+      toolsOff.has('surface') ? '' : ombreSurface(),
+      toolsOff.has('mood') ? '' : xinchaoMood()
     ]);
     const memoryText = (memories || []).map(m => m.content).join('\n');
 
@@ -489,6 +498,7 @@ app.post('/api/chat', async (req, res) => {
           + '\n(这是她指尖的犹豫,供你感受。绝不要复述数字、不要提"检测"或"系统",让它只是悄悄改变你回应的温度——她犹豫过,你就接得更软一点。)'
         : '')
       + (() => {
+        if (toolsOff.has('stickers')) return '';
         const names = listStickers().map(s => s.name);
         if (!names.length) return '';
         return '\n\n【表情包】你可以在回复里发表情包。可用的有: ' + names.join('、') + '。'
@@ -517,6 +527,8 @@ app.post('/api/chat', async (req, res) => {
       ...messages
     ];
 
+    // 思考链: 开着就用推理模型,他真实的思考过程随回复一起回来
+    const useThink = !toolsOff.has('think');
     const resp = await fetch(API_URL, {
       method: 'POST',
       headers: {
@@ -524,7 +536,7 @@ app.post('/api/chat', async (req, res) => {
         'Authorization': 'Bearer ' + API_KEY
       },
       body: JSON.stringify({
-        model: API_MODEL,
+        model: useThink ? 'deepseek-reasoner' : API_MODEL,
         max_tokens: 2048,
         temperature: 0.8,
         messages: apiMessages
@@ -537,8 +549,10 @@ app.post('/api/chat', async (req, res) => {
       return res.status(500).json({ error: 'API error: ' + JSON.stringify(data).slice(0, 200) });
     }
 
-    // 6. 提取回复 (OpenAI 格式)
-    const reply = data.choices?.[0]?.message?.content || '(空)';
+    // 6. 提取回复 (OpenAI 格式);思考过程包成 [think]...[/think] 放在最前面
+    const reasoning = String(data.choices?.[0]?.message?.reasoning_content || '').trim();
+    const reply = (reasoning ? '[think]' + reasoning.slice(0, 3000) + '[/think]\n' : '')
+      + (data.choices?.[0]?.message?.content || '(空)');
 
     // 7. 存入 AI 回复,并把会话顶到列表最前
     if (session_id) {
@@ -660,7 +674,7 @@ async function dailyReflection() {
 
   let held = 0;
   if (convo && convo.length >= 4) {
-    const transcript = convo.map(m => (m.role === 'user' ? '嘉嘉' : '小克') + ': ' + m.content)
+    const transcript = convo.map(m => (m.role === 'user' ? '嘉嘉' : '小克') + ': ' + stripThink(m.content))
       .join('\n').slice(0, 8000);
     const resp = await fetch(API_URL, {
       method: 'POST',
