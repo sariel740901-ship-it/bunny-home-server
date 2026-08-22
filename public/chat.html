@@ -155,7 +155,19 @@ body.hide-os .os{display:none}
 .side-item:hover{background:var(--chip)}
 .side-item:active{opacity:.7}
 .side-sec{font-size:12.5px;color:var(--muted);margin:16px 6px 6px;font-weight:600;letter-spacing:.5px}
-.tool-row{display:flex;align-items:baseline;gap:8px;padding:8px 10px;font-size:13px}
+.tool-hd{cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:6px;margin:10px 0 2px;border-radius:10px}
+.tool-hd:hover{background:var(--chip)}
+.tool-hd span{font-weight:400;font-size:11.5px}
+.tg.tg-sm{width:38px;height:22px}
+.tg.tg-sm i::after{width:16px;height:16px}
+.tg.tg-sm input:checked+i::after{transform:translateX(16px)}
+.tool-row{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:13px}
+/* 思考链: 收起是一行小字,点开铺开 */
+.think{margin:2px 0 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif}
+.think-hd{display:inline-block;font-size:12px;color:var(--muted);cursor:pointer;padding:3px 11px;border:1px solid var(--border);border-radius:11px;user-select:none;-webkit-user-select:none;transition:color .15s,border-color .15s}
+.think-hd:hover{color:var(--accent);border-color:var(--accent)}
+.think-bd{display:none;margin-top:7px;padding:6px 0 6px 12px;border-left:2px solid var(--border);color:var(--muted);font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.think.open .think-bd{display:block}
 .tool-row b{font-weight:600;white-space:nowrap}
 .tool-row .td{flex:1;color:var(--muted);font-size:12px;line-height:1.5}
 .tool-row .st{font-size:11.5px;white-space:nowrap;color:var(--muted)}
@@ -265,8 +277,8 @@ body.hide-os .os{display:none}
   <div class="side-item" onclick="toggleSide();toggleMood()">他此刻的心</div>
   <div class="side-item" onclick="toggleSide();toggleDrawer()">装扮小家</div>
   <div class="side-item" onclick="toggleSide();toggleCall()">语音通话</div>
-  <div class="side-sec">他的工具箱</div>
-  <div id="toolList"><div class="tool-loading">看看他都带了什么…</div></div>
+  <div class="side-sec tool-hd" onclick="toggleTools()">他的工具箱<span id="toolArrow">展开</span></div>
+  <div id="toolList" style="display:none"><div class="tool-loading">看看他都带了什么…</div></div>
 </aside>
 
 <!-- 按住说话浮层 -->
@@ -355,7 +367,7 @@ const BGS={
 };
 const MY_BUBS=['#d97757','#e898a4','#95ec69','#7489b4','#b48ac9','#f0eee5'];
 const HIS_BUBS=['default','#ffffff','#fbe9ec','#e8edf7','#effae9','#f5eedd'];
-let decor={bg:'默认',myBub:'#d97757',hisBub:'default',kAv:'none',myAv:'none',title:'Bunny Home',voiceBar:!0,showOS:!0,fingertips:!0};
+let decor={bg:'默认',myBub:'#d97757',hisBub:'default',kAv:'none',myAv:'none',title:'Bunny Home',voiceBar:!0,showOS:!0,fingertips:!0,tools:{}};
 try{Object.assign(decor,JSON.parse(localStorage.getItem(DECOR_KEY)||'{}'))}catch(e){}
 // 旧版的 emoji 头像不再支持 —— 没上传图片就不显示头像
 if(String(decor.kAv||'').startsWith('emoji:'))decor.kAv='none';
@@ -474,7 +486,21 @@ function toggleSide(){
   const show=!document.getElementById('side').classList.contains('show');
   document.getElementById('side').classList.toggle('show',show);
   document.getElementById('sideMask').classList.toggle('show',show);
-  if(show&&!toolsLoaded)loadTools();
+}
+// 工具箱是折叠的下拉列表,点标题展开;带开关的关掉后聊天时真的不带
+function toggleTools(){
+  const box=document.getElementById('toolList');
+  const open=box.style.display==='none';
+  box.style.display=open?'':'none';
+  document.getElementById('toolArrow').textContent=open?'收起':'展开';
+  if(open&&!toolsLoaded)loadTools();
+}
+function toolOn(key){return !decor.tools||decor.tools[key]!==!1}
+function toolsOffList(extra){
+  const off=[];
+  if(decor.tools)for(const k in decor.tools)if(decor.tools[k]===!1)off.push(k);
+  if(extra)for(const k of extra)if(!off.includes(k))off.push(k);
+  return off;
 }
 async function loadTools(){
   const box=document.getElementById('toolList');
@@ -486,8 +512,18 @@ async function loadTools(){
       const d=document.createElement('div');d.className='tool-row';
       const b=document.createElement('b');b.textContent=t.name;
       const td=document.createElement('span');td.className='td';td.textContent=t.desc||'';
-      const st=document.createElement('span');st.className='st'+(t.on?' on':'');st.textContent=t.on?'带着':'没带';
-      d.appendChild(b);d.appendChild(td);d.appendChild(st);box.appendChild(d);
+      d.appendChild(b);d.appendChild(td);
+      if(t.switch&&t.on){
+        const lb=document.createElement('label');lb.className='tg tg-sm';
+        const ck=document.createElement('input');ck.type='checkbox';ck.checked=toolOn(t.key);
+        ck.onchange=()=>{decor.tools=decor.tools||{};decor.tools[t.key]=ck.checked;saveDecor();};
+        const i=document.createElement('i');
+        lb.appendChild(ck);lb.appendChild(i);d.appendChild(lb);
+      }else{
+        const st=document.createElement('span');st.className='st'+(t.on?' on':'');st.textContent=t.on?'带着':'没带';
+        d.appendChild(st);
+      }
+      box.appendChild(d);
     }
     toolsLoaded=!0;
   }catch(e){box.innerHTML='<div class="tool-loading">没看清,下次拉开再看</div>';}
@@ -630,6 +666,13 @@ function addRow(role,ts){
   bub.scrollIntoView({behavior:'smooth'});
   return {row,bub,wrap};
 }
+// 思考链: 摘出开头的 [think]...[/think]
+function splitThink(content){
+  content=String(content==null?'':content);
+  const m=content.match(/^\s*\[think\]([\s\S]*?)\[\/think\]\s*/);
+  if(!m)return {think:'',rest:content};
+  return {think:m[1].trim(),rest:content.slice(m[0].length)};
+}
 // 内心OS: 摘出 [os:...] 那句没说出口的
 // 模型偶尔不把它放最末尾(比如表情包压轴),所以全文找,取最后一处显示
 function splitOS(content){
@@ -641,10 +684,19 @@ function splitOS(content){
   return {text:cleaned,os};
 }
 function fillAssistant(parts,content){
-  const {text,os}=splitOS(content);
+  const {think,rest}=splitThink(content);
+  const {text,os}=splitOS(rest);
   const bub=parts.bub;bub.innerHTML='';
   const stickerOnly=/^\s*\[sticker:[^\]]+\]\s*$/.test(text);
   bub.classList.toggle('sticker-only',stickerOnly);
+  // 思考链: 收在最前面,点开才看
+  if(think&&!stickerOnly){
+    const tk=document.createElement('div');tk.className='think';
+    const hd=document.createElement('div');hd.className='think-hd';hd.textContent='他想了想';
+    const bd=document.createElement('div');bd.className='think-bd';bd.textContent=think;
+    hd.onclick=()=>{tk.classList.toggle('open');hd.textContent=tk.classList.contains('open')?'收起他的思考':'他想了想';};
+    tk.appendChild(hd);tk.appendChild(bd);bub.appendChild(tk);
+  }
   const speech=stickerOnly?'':text.replace(/\[sticker:[^\]]+\]/g,' ').trim();
   if(decor.voiceBar&&speech){
     const vb=document.createElement('div');vb.className='vbar';
@@ -784,7 +836,8 @@ async function postMessage(text){
   const parts=addRow('assistant');
   parts.bub.innerHTML='<span class="typing"><i></i><i></i><i></i></span>';
   try{
-    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text,persona})});
+    // 通话中额外关掉思考 —— 电话里等不起
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text,persona,tools_off:toolsOffList(callOpen?['think']:null)})});
     const d=await r.json();
     fillAssistant(parts,d.reply||'(空)');
     if(callOpen)speakAsync(d.reply);
@@ -987,7 +1040,8 @@ async function sendVoiceText(text){
   if(text===lastVoiceText&&now-lastVoiceAt<6000)return;
   lastVoiceText=text;lastVoiceAt=now;
   try{
-    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text,persona})});
+    // 通话时永远不带思考 —— 接得快比想得深重要
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text,persona,tools_off:toolsOffList(['think'])})});
     const d=await r.json();
     const reply=d.reply||'';
     if(reply)speakAsync(reply);
@@ -1043,8 +1097,8 @@ function showZhSubtitle(text){
 }
 
 async function speakAsync(text){
-  // 表情包暗号和心声 [os:...] 不朗读、不进字幕
-  text=String(text||'').replace(/\[sticker:[^\]]+\]/g,' ').replace(/\[os:[\s\S]*?\]/g,' ').trim();
+  // 思考链、表情包暗号和心声 [os:...] 不朗读、不进字幕
+  text=String(text||'').replace(/\[think\][\s\S]*?\[\/think\]/g,' ').replace(/\[sticker:[^\]]+\]/g,' ').replace(/\[os:[\s\S]*?\]/g,' ').trim();
   if(!text)return;
   speakQueue=splitForTTS(text);
   showZhSubtitle(text);
