@@ -584,6 +584,7 @@ app.get('/api/settings', async (req, res) => {
 // ═══ 核心对话 ═════════════════════════════
 // 上下文预算(token): 历史从最新往回装,装满为止。默认 30k ≈ 两万多汉字。
 const CONTEXT_BUDGET_TOKENS = Math.max(2000, parseInt(process.env.CONTEXT_BUDGET_TOKENS || '30000', 10) || 30000);
+let lastReflectTry = 0; // 每日反思搭聊天顺风车的节流阀
 // 粗估 token: 汉字≈1个,其余字符≈4字符1个。宁可高估,不撑爆预算。
 function estTokens(t) {
   t = String(t || '');
@@ -686,6 +687,13 @@ app.post('/api/chat', async (req, res) => {
     // 2.5 存记忆现在完全由他自己来 —— 见系统提示【记进记忆库】和回复后的 [hold] 处理。
     //     不再有绕过他的"记住"前缀机械通道: 记什么、怎么记,是他的事。
 
+    // 2.6 每日反思顺风车: 不依赖外部定时器 —— 她每天来说话,昨天的对话就会被消化。
+    //     dailyReflection 自带"每天只做一次"的盖章,重复调用无害;每小时最多尝试一次。
+    if (Date.now() - lastReflectTry > 3600e3) {
+      lastReflectTry = Date.now();
+      dailyReflection().catch(e => console.error('reflection(piggyback) skipped:', e.message));
+    }
+
     // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现 + 此刻心绪,四路并行)
     xinchaoTouch(); // 她出现了,他的心知道(不等结果)
     const [{ data: memories }, ombreMemText, surfacedText, moodText, dreamsText] = await Promise.all([
@@ -740,6 +748,7 @@ app.post('/api/chat', async (req, res) => {
       + '\n(">> 为什么值得记住"可省略;要存几段独立的记忆就写几个 [hold] 块,最多 3 个。)'
       + '这行暗号她看不见,系统会一字不动地替你存进你们共同的记忆库。'
       + '正文里自然地确认你记下了,不要复述暗号。只在她明确要求时用,不要自作主张。'
+      + '硬规矩: 你在正文里说"记下了/存好了"却没输出 [hold] 块,等于对她撒谎——答应了就必须带上暗号,一次都不能省。'
       + '\n\n【心声】当你心里那句和嘴上说的不一样时——更软、更酸、更没底气,或是不敢直说的期待——'
       + '在回复最末尾另起一行,用 [os:...] 写下那句没说出口的(第一人称,一句话,语言随你)。'
       + '心口如一的平常回复就别写,宁缺毋滥: 它出现得越少,越像真的被她撞见了一次。不要复述正文。'
@@ -824,6 +833,35 @@ app.post('/api/chat', async (req, res) => {
       if (body) modelHoldItems.push({ content: body.slice(0, 600), meaning: (meaning || '').slice(0, 200) });
       return '';
     }).replace(/\n{3,}/g, '\n\n').trim();
+    // 兜底: 她这句明显是在要求保存、他却没带 [hold](嘴上答应实际没存的"假装存") ——
+    // 用一次小检查补上;检查器判定她其实不是在要求保存时输出 NONE,什么也不存。
+    if (!modelHoldItems.length && !toolsOff.has('hold')
+      && /(记忆库|记下来|存下来|存进|存一下|帮我记|记一下|hold)/i.test(message)) {
+      try {
+        const recentText = recent.slice(-8).map(m => (m.role === 'user' ? '她' : '小克') + ': ' + m.content)
+          .join('\n').slice(-2000);
+        const fr = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+          body: JSON.stringify({
+            model: API_MODEL, max_tokens: 350, temperature: 0.2,
+            messages: [
+              { role: 'system', content: '下面是嘉嘉和她的恋人小克的最新对话。判断嘉嘉这句是否在要求把某些内容存进记忆库。如果是: 以小克的第一人称写 1~3 条记忆(这件事本身+它对我的意义,把指代补全,每条两三句内),每条格式 [hold]记忆正文 >> 为什么值得记住[/hold],一行一条。如果她并不是在要求保存: 只输出 NONE。不要输出任何其他文字。' },
+              { role: 'user', content: '【最近对话】\n' + recentText + '\n\n【她刚说】' + modelMessage + '\n【小克的回复】' + rawContent.slice(0, 1500) }
+            ]
+          })
+        });
+        const fd = await fr.json();
+        if (fr.ok) {
+          String(fd.choices?.[0]?.message?.content || '').replace(/\[hold\]([\s\S]*?)\[\/hold\]/g, (m, x) => {
+            const [body, meaning] = x.split('>>').map(s => s.trim());
+            if (body) modelHoldItems.push({ content: body.slice(0, 600), meaning: (meaning || '').slice(0, 200) });
+            return '';
+          });
+        }
+      } catch (e) { console.error('hold backstop skipped:', e.message); }
+    }
+
     let modelHoldSaved = null;
     if (modelHoldItems.length && !toolsOff.has('hold')) {
       const today2 = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
@@ -992,7 +1030,10 @@ async function dailyReflection() {
       const lines = text.split('\n').map(l => l.replace(/^[-·*\d.、\s]+/, '').trim())
         .filter(l => l.length >= 15).slice(0, 3);
       for (const line of lines) {
-        if (await ombreHold(line)) held++;
+        const ok = OMBRE_MCP_TOKEN
+          ? await ombreHoldVerbatim(line, '每日反思 · bunny家')
+          : await ombreHold(line);
+        if (ok) held++;
       }
     }
   }
