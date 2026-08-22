@@ -680,10 +680,42 @@ app.post('/api/chat', async (req, res) => {
     if (holdMatch) {
       const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // 北京时间
       const kept = holdMatch[1].trim();
+      // 先拿最近对话把指代还原("记住那两条"→那两条到底是什么),整理成 1~3 条自包含记忆。
+      // 还原失败就按原话存,至少不丢。
+      let items = [kept];
+      try {
+        const ctx = history.slice(-12).map(m => (m.role === 'user' ? '她' : '小克') + ': ' + m.content)
+          .join('\n').slice(-3000);
+        const rr = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+          body: JSON.stringify({
+            model: API_MODEL, max_tokens: 400, temperature: 0.2,
+            messages: [
+              { role: 'system', content: '她让恋人记住一些内容。根据对话上下文,把要记住的内容整理成 1~3 条独立记忆:每条一句话、自包含(把"这/那/刚才说的"等指代替换成上下文里的具体内容),尽量保留她的原话和事实,不要评论、不要添油加醋。她的嘱咐本身已经具体时就原样输出一条。只输出 JSON 数组,如 ["...","..."],不要其他文字。' },
+              { role: 'user', content: '【最近对话】\n' + ctx + '\n\n【她的嘱咐】记住: ' + kept }
+            ]
+          })
+        });
+        const rd = await rr.json();
+        if (rr.ok) {
+          const jm = String(rd.choices?.[0]?.message?.content || '').match(/\[[\s\S]*\]/);
+          if (jm) {
+            const arr = JSON.parse(jm[0]);
+            if (Array.isArray(arr) && arr.length && arr.every(x => typeof x === 'string' && x.trim())) {
+              items = arr.slice(0, 3).map(x => x.trim());
+            }
+          }
+        }
+      } catch (e) { console.error('hold resolve skipped:', e.message); }
       // 配了 MCP token 就走 hold 逐字保存;否则回退导入管道(会被脱水成第三人称摘要)
-      const saved = OMBRE_MCP_TOKEN
-        ? await ombreHoldVerbatim(kept, today + ' 她在bunny的家里特意嘱咐要记住的')
-        : await ombreHold(today + ' 她在bunny的家里让小克记住: ' + kept);
+      let saved = true;
+      for (const it of items) {
+        const ok = OMBRE_MCP_TOKEN
+          ? await ombreHoldVerbatim(it, today + ' 她在bunny的家里特意嘱咐要记住的')
+          : await ombreHold(today + ' 她在bunny的家里让小克记住: ' + it);
+        saved = saved && ok;
+      }
       holdSaved = saved;
       holdNote = saved
         ? '\n\n【系统】她刚才让你记住的事已成功写入你们共同的记忆库。回复时自然地确认你记下了,不要提"系统"或"数据库"。'
