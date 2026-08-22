@@ -549,9 +549,30 @@ app.post('/api/chat', async (req, res) => {
       return res.status(500).json({ error: 'API error: ' + JSON.stringify(data).slice(0, 200) });
     }
 
-    // 6. 提取回复 (OpenAI 格式);思考过程包成 [think]...[/think] 放在最前面
+    // 6. 提取回复 (OpenAI 格式);思考过程先总结成中文小结,再包成 [think]...[/think] 放在最前面
     const reasoning = String(data.choices?.[0]?.message?.reasoning_content || '').trim();
-    const reply = (reasoning ? '[think]' + reasoning.slice(0, 3000) + '[/think]\n' : '')
+    let thinkNote = '';
+    if (reasoning) {
+      try {
+        const sresp = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+          body: JSON.stringify({
+            model: API_MODEL,
+            max_tokens: 260,
+            temperature: 0.3,
+            messages: [
+              { role: 'system', content: '下面是一个 AI 在回复恋人之前的内心思考。把它压缩成中文小结,60~140字,用他的第一人称"我",保留他注意到的细节、做的判断和情绪,不要评论,不要引号,不要开场白。' },
+              { role: 'user', content: reasoning.slice(0, 4000) }
+            ]
+          })
+        });
+        const sdata = await sresp.json();
+        if (sresp.ok) thinkNote = String(sdata.choices?.[0]?.message?.content || '').trim();
+      } catch (e) { console.error('think summary skipped:', e.message); }
+      if (!thinkNote) thinkNote = reasoning.slice(0, 600); // 总结失败就给原文开头,不让他的思考白想
+    }
+    const reply = (thinkNote ? '[think]' + thinkNote + '[/think]\n' : '')
       + (data.choices?.[0]?.message?.content || '(空)');
 
     // 7. 存入 AI 回复,并把会话顶到列表最前
