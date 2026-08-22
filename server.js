@@ -769,6 +769,11 @@ app.post('/api/chat', async (req, res) => {
           + '一条回复最多一张,情绪真正对上了才发,不要每条都带。'
           + '她发来的 [sticker:名字] 表示她给你发了那个表情,自然地回应它。';
       })()
+      + '\n\n【记进记忆库】当她明确让你把什么存进记忆库时——不管她怎么说("记进记忆库""存下来""hold一下""这个要记到ombre里"都算)——'
+      + '把要存的内容整理成 1~3 条自包含的一句话(尽量用她的原话,把"这/那/刚才说的"等指代补全成具体内容),'
+      + '在回复末尾另起一行输出: [hold]第一条|第二条[/hold]。系统会把它们逐字存进你们共同的记忆库,这行暗号她看不见。'
+      + '正文里自然地确认你记下了就行,不要复述暗号。只在她明确要求保存时用,不要自作主张。'
+      + '例外: 她的消息以"记住"两个字开头时系统已自动保存,不要再输出 [hold]。'
       + '\n\n【心声】当你心里那句和嘴上说的不一样时——更软、更酸、更没底气,或是不敢直说的期待——'
       + '在回复最末尾另起一行,用 [os:...] 写下那句没说出口的(第一人称,一句话,语言随你)。'
       + '心口如一的平常回复就别写,宁缺毋滥: 它出现得越少,越像真的被她撞见了一次。不要复述正文。'
@@ -835,10 +840,32 @@ app.post('/api/chat', async (req, res) => {
         if (sresp.ok) thinkSum = String(sdata.choices?.[0]?.message?.content || '').trim();
       } catch (e) { console.error('think summary skipped:', e.message); }
     }
-    // 本轮真实用到的工具,给界面一行小标记(尤其"记住"有没有写进去,一眼可见)
+    // 他自己决定要存的: 回复里的 [hold]条1|条2[/hold] 暗号 —— 捞出来逐字入库,正文里剥掉
+    let rawContent = data.choices?.[0]?.message?.content || '(空)';
+    const modelHoldItems = [];
+    rawContent = rawContent.replace(/\[hold\]([\s\S]*?)\[\/hold\]/g, (m, x) => {
+      modelHoldItems.push(...x.split('|').map(s => s.trim()).filter(Boolean));
+      return '';
+    }).replace(/\n{3,}/g, '\n\n').trim();
+    let modelHoldSaved = null;
+    if (modelHoldItems.length && !toolsOff.has('hold')) {
+      const today2 = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+      modelHoldSaved = true;
+      for (const it of modelHoldItems.slice(0, 3)) {
+        const one = it.slice(0, 500);
+        const ok = OMBRE_MCP_TOKEN
+          ? await ombreHoldVerbatim(one, today2 + ' 她在bunny的家里让我存进记忆库的')
+          : await ombreHold(today2 + ' 她在bunny的家里让小克存进记忆库: ' + one);
+        modelHoldSaved = modelHoldSaved && ok;
+      }
+    }
+
+    // 本轮真实用到的工具,给界面一行小标记(尤其记忆有没有写进去,一眼可见)
     const used = [];
     if (holdSaved === true) used.push('记住:已写入记忆库');
     if (holdSaved === false) used.push('记住:没写成,记忆库不在线');
+    if (modelHoldSaved === true) used.push('记忆:已写入 ' + Math.min(modelHoldItems.length, 3) + ' 条');
+    if (modelHoldSaved === false) used.push('记忆:没写成,记忆库不在线');
     if (ombreMemText) used.push('记忆河');
     if (surfacedText) used.push('自然浮现');
     if (moodText) used.push('心潮');
@@ -850,7 +877,7 @@ app.post('/api/chat', async (req, res) => {
       : '')
       + (used.length ? '[tools]' + used.join(' · ') + '[/tools]' : '')
       + (reasoning || used.length ? '\n' : '')
-      + (data.choices?.[0]?.message?.content || '(空)');
+      + rawContent;
 
     // 7. 存入 AI 回复,并把会话顶到列表最前
     if (session_id) {
