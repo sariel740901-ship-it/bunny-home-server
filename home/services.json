@@ -7,5 +7,6 @@
   {"name": "presence",    "title": "时间的眼睛", "dir": "presence",    "cmd": ["server.py"],          "port": 8040, "enabled": true},
   {"name": "music-dj",    "title": "DJ台",       "dir": "music-dj",    "cmd": ["server.py"],          "port": 3456, "enabled": true},
   {"name": "xinchao",     "title": "心潮",       "watch": true,                                        "port": 18110, "enabled": true},
-  {"name": "songsmith",   "title": "歌坊",       "dir": "songsmith",   "cmd": ["server.py"],          "port": 8060, "enabled": true}
+  {"name": "songsmith",   "title": "歌坊",       "dir": "songsmith",   "cmd": ["server.py"],          "port": 8060, "enabled": true},
+  {"name": "bunnylog",    "title": "兔窝档案",   "dir": "bunnylog",    "cmd": ["server.py"],          "port": 8070, "enabled": true}
 ]
