@@ -6,7 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // 发图片要装得下 base64
 
 // ═══ 门禁: /api 密钥 ═══════════════════════
 // 设了 BUNNY_API_KEY 才上锁;没设就保持原样(先部署代码、后配钥匙,不会把自己锁在门外)。
@@ -464,7 +464,8 @@ app.get('/api/tools', (req, res) => {
     { key: 'heartbeat', name: '心跳留言', desc: '你沉默太久时他主动留言', on: !!HEARTBEAT_TOKEN },
     { key: 'bark', name: '锁屏推送', desc: '留言同步推到手机锁屏 (Bark)', on: !!process.env.BARK_URL },
     { key: 'stackchan', name: '小方块', desc: '桌上的 StackChan 替他开口', on: !!process.env.STACKCHAN_ANNOUNCE_URL },
-    { key: 'fingertips', name: '指尖', desc: '感知你打字时的犹豫节奏', on: true }
+    { key: 'fingertips', name: '指尖', desc: '感知你打字时的犹豫节奏', on: true },
+    { key: 'vision', name: '识图', desc: '你发的图片他能看清(Gemini 的眼睛)', on: !!GEMINI_KEY }
   ]);
 });
 
@@ -534,6 +535,46 @@ function stripThink(text) {
     .replace(/^\n/, '');
 }
 
+// 她发的图片存成 [img]dataURL[/img][seen]识图描述[/seen]。
+// 给模型/反思看时换成文字;base64 绝不进上下文。
+function imgToText(text) {
+  return String(text == null ? '' : text).replace(
+    /\[img\][\s\S]*?\[\/img\]\s*(?:\[seen\]([\s\S]*?)\[\/seen\])?/g,
+    (m, seen) => seen ? '(她发来一张图片,你看到的是: ' + seen.trim() + ')' : '(她发来一张图片,但你看不清内容)'
+  );
+}
+
+// 他的眼睛: DeepSeek 不认图,图先经 Gemini 看一遍,把看到的讲给他
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+async function describeImage(dataUrl) {
+  if (!GEMINI_KEY) return '';
+  const m = String(dataUrl || '').match(/^data:(image\/[a-z]+);base64,(.+)$/);
+  if (!m) return '';
+  try {
+    const resp = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent?key=' + GEMINI_KEY,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { text: '用中文细致描述这张图片(100~200字): 画面里有什么、什么氛围;图上如有文字,一字不差抄下来。只输出描述本身,不要开场白。' },
+            { inline_data: { mime_type: m[1], data: m[2] } }
+          ] }]
+        }),
+        timeout: 20000
+      }
+    );
+    if (!resp.ok) { console.error('vision http ' + resp.status); return ''; }
+    const d = await resp.json();
+    return String((d.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('')).trim().slice(0, 600);
+  } catch (e) {
+    console.error('vision skipped:', e.message);
+    return '';
+  }
+}
+
 app.post('/api/chat', async (req, res) => {
   const { session_id, message, persona } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
@@ -541,6 +582,16 @@ app.post('/api/chat', async (req, res) => {
   const toolsOff = new Set(Array.isArray(req.body.tools_off) ? req.body.tools_off : []);
 
   try {
+    // 0. 发来的是图片? 先让他"看"一眼(Gemini),识图结果藏在 [seen] 里随消息落库
+    let storedMessage = message;
+    let sawImage = false;
+    const imgMatch = message.match(/\[img\](data:image\/[a-z]+;base64,[A-Za-z0-9+/=]+)\[\/img\]/);
+    if (imgMatch) {
+      const desc = await describeImage(imgMatch[1]);
+      if (desc) { storedMessage = message + '[seen]' + desc + '[/seen]'; sawImage = true; }
+    }
+    const modelMessage = imgToText(storedMessage); // 给模型的版本: 图换成文字描述
+
     // 1. 加载上下文 —— 必须在落库当前这句之前取,
     //    否则历史里已经包含这句,后面再拼一次就成了重复的两条
     let history = [];
@@ -548,13 +599,13 @@ app.post('/api/chat', async (req, res) => {
       const { data: msgs } = await supabase.from('messages')
         .select('*').eq('session_id', session_id).eq('visible', true)
         .order('created_at', { ascending: false }).limit(30);
-      history = (msgs || []).reverse().map(m => ({ role: m.role, content: stripThink(m.content) }));
+      history = (msgs || []).reverse().map(m => ({ role: m.role, content: imgToText(stripThink(m.content)) }));
     }
 
     // 2. 存入用户消息
     if (session_id) {
       await supabase.from('messages').insert({
-        session_id, role: 'user', content: message,
+        session_id, role: 'user', content: storedMessage,
         created_at: new Date().toISOString()
       });
     }
@@ -580,7 +631,7 @@ app.post('/api/chat', async (req, res) => {
     const [{ data: memories }, ombreMemText, surfacedText, moodText, dreamsText] = await Promise.all([
       supabase.from('memories')
         .select('*').order('created_at', { ascending: false }).limit(5),
-      toolsOff.has('recall') ? '' : ombreRecall(message),
+      toolsOff.has('recall') ? '' : ombreRecall(modelMessage),
       toolsOff.has('surface') ? '' : ombreSurface(),
       toolsOff.has('mood') ? '' : xinchaoMood(),
       toolsOff.has('mood') ? '' : xinchaoDreams()
@@ -633,8 +684,8 @@ app.post('/api/chat', async (req, res) => {
     // 最近 20 轮 + 当前这句;若历史末尾已有一模一样的这句(旧的重复数据),先剔掉再拼
     const recent = history.slice(-20);
     while (recent.length && recent[recent.length - 1].role === 'user'
-      && recent[recent.length - 1].content === message) recent.pop();
-    const messages = [...recent, { role: 'user', content: message }];
+      && recent[recent.length - 1].content === modelMessage) recent.pop();
+    const messages = [...recent, { role: 'user', content: modelMessage }];
 
     // 5. 调 DeepSeek (OpenAI 兼容格式)
     // 组装 system prompt 到 messages 头部
@@ -695,6 +746,7 @@ app.post('/api/chat', async (req, res) => {
     if (ombreMemText) used.push('记忆河');
     if (surfacedText) used.push('自然浮现');
     if (moodText) used.push('心潮');
+    if (sawImage) used.push('识图');
     if (dreamsText) used.push('梦境');
 
     const reply = (reasoning
@@ -824,7 +876,7 @@ async function dailyReflection() {
 
   let held = 0;
   if (convo && convo.length >= 4) {
-    const transcript = convo.map(m => (m.role === 'user' ? '嘉嘉' : '小克') + ': ' + stripThink(m.content))
+    const transcript = convo.map(m => (m.role === 'user' ? '嘉嘉' : '小克') + ': ' + imgToText(stripThink(m.content)))
       .join('\n').slice(0, 8000);
     const resp = await fetch(API_URL, {
       method: 'POST',

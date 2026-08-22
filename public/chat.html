@@ -54,6 +54,7 @@ body.his-flat .bubble.assistant{background:transparent;border:none;box-shadow:no
 .bubble.sticker-only{background:transparent !important;border:none !important;box-shadow:none;padding:2px;font-family:inherit}
 .divider{align-self:center;font-size:11.5px;color:var(--muted);letter-spacing:.4px;padding:2px 0}
 .bubble img.sticker{display:block;max-width:150px;max-height:150px;border-radius:10px;margin:4px 0}
+.bubble img.photo{display:block;max-width:min(240px,62vw);border-radius:12px;margin:2px 0;box-shadow:var(--shadow)}
 
 /* 语音条 (微信式,点击播他的声音) */
 .vbar{display:flex;align-items:center;gap:8px;cursor:pointer;padding:1px 2px 7px;user-select:none;-webkit-user-select:none}
@@ -248,9 +249,12 @@ body.hide-os .os{display:none}
   </main>
   <div class="stk-panel" id="stkpanel"></div>
   <div class="plus-panel" id="pluspanel">
+    <div class="plus-item" onclick="togglePlus();document.getElementById('chatImgInp').click()">图片</div>
     <div class="plus-item" onclick="togglePlus();toggleStickers()">表情包</div>
     <div class="plus-item" onclick="togglePlus();toggleCall()">语音通话</div>
+    <div class="plus-item" onclick="togglePlus();toggleTools()">他的工具箱</div>
   </div>
+  <input type="file" id="chatImgInp" accept="image/*" style="display:none">
   <footer class="input">
     <div class="composer">
       <textarea id="inp" placeholder="说点什么…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
@@ -271,9 +275,14 @@ body.hide-os .os{display:none}
   <div class="side-item" onclick="toggleSide();toggleDrawer()">装扮小家</div>
   <div class="side-item" onclick="toggleSide();toggleCall()">语音通话</div>
   <div class="side-item" onclick="location.href='/starmap.html'">记忆星图</div>
-  <div class="side-sec tool-hd" onclick="toggleTools()">他的工具箱<span id="toolArrow">展开</span></div>
-  <div id="toolList" style="display:none"><div class="tool-loading">看看他都带了什么…</div></div>
 </aside>
+
+<!-- 他的工具箱: 底部拉出(从 + 号进) -->
+<div class="drawer-mask" id="toolsMask" onclick="toggleTools()"></div>
+<div class="drawer" id="toolsSheet">
+  <div class="dtitle">他的工具箱</div>
+  <div id="toolList"><div class="tool-loading">看看他都带了什么…</div></div>
+</div>
 
 <!-- 思考卡片: 底部拉出 -->
 <div class="drawer-mask" id="thinkMask" onclick="closeThink()"></div>
@@ -479,13 +488,12 @@ function toggleSide(){
   document.getElementById('side').classList.toggle('show',show);
   document.getElementById('sideMask').classList.toggle('show',show);
 }
-// 工具箱是折叠的下拉列表,点标题展开;带开关的关掉后聊天时真的不带
+// 工具箱: 从 + 号进,底部拉出;带开关的关掉后聊天时真的不带
 function toggleTools(){
-  const box=document.getElementById('toolList');
-  const open=box.style.display==='none';
-  box.style.display=open?'':'none';
-  document.getElementById('toolArrow').textContent=open?'收起':'展开';
-  if(open&&!toolsLoaded)loadTools();
+  const show=!document.getElementById('toolsSheet').classList.contains('show');
+  document.getElementById('toolsSheet').classList.toggle('show',show);
+  document.getElementById('toolsMask').classList.toggle('show',show);
+  if(show&&!toolsLoaded)loadTools();
 }
 // 声音默认关(语音额度金贵),其他工具默认开
 const TOOLS_OFF_BY_DEFAULT=['voice'];
@@ -621,17 +629,44 @@ function renderMood(d,timeline){
 // ═══ 表情包 ═══════════════════════════════════════════
 let stickerMap={};
 function renderContent(el,content){
-  content=String(content==null?'':content);
+  content=String(content==null?'':content).replace(/\[seen\][\s\S]*?\[\/seen\]/g,'').trim();
   el.textContent='';
-  const parts=content.split(/\[sticker:([^\]]+)\]/);
-  for(let i=0;i<parts.length;i++){
-    if(i%2){ // 奇数段是表情名
-      const name=parts[i].trim(),url=stickerMap[name];
-      if(url){const img=document.createElement('img');img.src=url;img.alt=name;img.className='sticker';el.appendChild(img);}
-      else el.appendChild(document.createTextNode('['+parts[i]+']'));
-    }else if(parts[i])el.appendChild(document.createTextNode(parts[i]));
+  // 先切图片,再在文字段里切表情包
+  const segs=content.split(/\[img\](data:image\/[a-z]+;base64,[A-Za-z0-9+\/=]+)\[\/img\]/);
+  for(let i=0;i<segs.length;i++){
+    if(i%2){const im=document.createElement('img');im.src=segs[i];im.className='photo';im.loading='lazy';el.appendChild(im);continue;}
+    const parts=segs[i].split(/\[sticker:([^\]]+)\]/);
+    for(let j=0;j<parts.length;j++){
+      if(j%2){ // 奇数段是表情名
+        const name=parts[j].trim(),url=stickerMap[name];
+        if(url){const img=document.createElement('img');img.src=url;img.alt=name;img.className='sticker';el.appendChild(img);}
+        else el.appendChild(document.createTextNode('['+parts[j]+']'));
+      }else if(parts[j])el.appendChild(document.createTextNode(parts[j]));
+    }
   }
 }
+// 只有图片/表情包的消息不装气泡框
+function mediaOnly(t){return /^\s*(\[sticker:[^\]]+\]|\[img\][^\[]*\[\/img\])\s*(\[seen\][\s\S]*?\[\/seen\])?\s*$/.test(String(t||''))}
+// 发图: 裁到 1280 内压成 JPEG 再走 postMessage
+function pickChatImage(file){
+  const img=new Image();
+  img.onload=()=>{
+    try{
+      const MAX=1280;let w=img.width,h=img.height;
+      const sc=Math.min(1,MAX/Math.max(w,h));w=Math.round(w*sc);h=Math.round(h*sc);
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      postMessage('[img]'+c.toDataURL('image/jpeg',0.78)+'[/img]');
+    }catch(e){alert('这张图读不了,换一张试试');}
+    URL.revokeObjectURL(img.src);
+  };
+  img.onerror=()=>alert('这张图读不了,换一张试试');
+  img.src=URL.createObjectURL(file);
+}
+document.getElementById('chatImgInp').onchange=e=>{
+  if(e.target.files&&e.target.files[0])pickChatImage(e.target.files[0]);
+  e.target.value='';
+};
 function buildStickerPanel(){
   const p=document.getElementById('stkpanel');p.innerHTML='';
   for(const name in stickerMap){
@@ -855,7 +890,7 @@ document.getElementById('inp').addEventListener('input',()=>{
           const ts=m.created_at?new Date(m.created_at).getTime():Date.now();
           const parts=addRow(m.role==='user'?'user':'assistant',ts);
           if(m.role==='user'){
-            parts.bub.classList.toggle('sticker-only',/^\s*\[sticker:[^\]]+\]\s*$/.test(String(m.content||'').trim()));
+            parts.bub.classList.toggle('sticker-only',mediaOnly(m.content));
             renderContent(parts.bub,m.content);
           }
           else fillAssistant(parts,m.content);
@@ -887,7 +922,7 @@ async function postMessage(text){
   if(loading)return;loading=!0;
   document.getElementById('welcome').style.display='none';
   const u=addRow('user');
-  u.bub.classList.toggle('sticker-only',/^\s*\[sticker:[^\]]+\]\s*$/.test(text));
+  u.bub.classList.toggle('sticker-only',mediaOnly(text));
   renderContent(u.bub,text);
   const parts=addRow('assistant');
   parts.bub.innerHTML='<span class="typing"><i></i><i></i><i></i></span>';

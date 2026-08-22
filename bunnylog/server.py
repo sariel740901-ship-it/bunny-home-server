@@ -59,6 +59,15 @@ def _who(role: str) -> str:
     return "嘉嘉" if role == "user" else "小克"
 
 
+def _clean(text) -> str:
+    """图片的 base64 不进档案输出;识图描述保留成一句话。"""
+    import re
+    text = str(text or "")
+    text = re.sub(r"\[img\][\s\S]*?\[/img\]", "[图片]", text)
+    text = re.sub(r"\[seen\]([\s\S]*?)\[/seen\]", lambda m: "(图里是: " + m.group(1).strip()[:120] + ")", text)
+    return text
+
+
 mcp = FastMCP(
     name="bunnylog",
     instructions="""
@@ -109,7 +118,7 @@ async def bunny_read(session_id: int, limit: int = 30, before: str = "") -> str:
     if not rows:
         return "这间会话里(这个时间之前)没有消息了。"
     rows.reverse()
-    lines = [f"[{_bj_time(r.get('created_at', ''))}] {_who(r.get('role', ''))}: {r.get('content', '')}" for r in rows]
+    lines = [f"[{_bj_time(r.get('created_at', ''))}] {_who(r.get('role', ''))}: {_clean(r.get('content', ''))}" for r in rows]
     head = f"会话 {session_id},{_bj_time(rows[0].get('created_at', ''))} 起的 {len(rows)} 条(时间正序):\n"
     tail = f"\n\n还想往前翻就 bunny_read({session_id}, before='{_bj_time(rows[0].get('created_at', ''))}')。"
     return head + "\n".join(lines) + tail
@@ -134,7 +143,7 @@ async def bunny_search(keyword: str, limit: int = 20) -> str:
     names = {s["id"]: (s.get("name") or "未命名") for s in _rest("sessions", {"select": "id,name"})}
     lines = []
     for r in rows:
-        text = r.get("content", "")
+        text = _clean(r.get("content", ""))
         if len(text) > 120:
             i = text.find(keyword)
             start = max(0, i - 40) if i >= 0 else 0
