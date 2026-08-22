@@ -46,6 +46,18 @@ async function safeDB(fn) {
   try { return await fn(supabase); } catch (e) { return { data: null, error: e.message }; }
 }
 
+// 有新消息落进会话时,把会话的 updated_at 顶上去(会话列表按它排序)
+async function touchSession(sessionId) {
+  if (!sessionId || !supabase) return;
+  try {
+    const { error } = await supabase.from('sessions')
+      .update({ updated_at: new Date().toISOString() }).eq('id', sessionId);
+    if (error) console.error('touch session skipped:', error.message);
+  } catch (e) {
+    console.error('touch session skipped:', e.message);
+  }
+}
+
 // ═══ API 配置 ═════════════════════════════
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const API_URL = 'https://api.deepseek.com/chat/completions';
@@ -510,12 +522,13 @@ app.post('/api/chat', async (req, res) => {
     // 6. 提取回复 (OpenAI 格式)
     const reply = data.choices?.[0]?.message?.content || '(空)';
 
-    // 7. 存入 AI 回复
+    // 7. 存入 AI 回复,并把会话顶到列表最前
     if (session_id) {
       await supabase.from('messages').insert({
         session_id, role: 'assistant', content: reply,
         created_at: new Date().toISOString()
       });
+      await touchSession(session_id);
     }
 
     res.json({ reply, session_id });
@@ -746,6 +759,7 @@ app.all('/api/heartbeat', async (req, res) => {
       session_id: sessionId, role: 'assistant', content: text,
       created_at: new Date().toISOString()
     });
+    await touchSession(sessionId);
     const pushed = await barkPush(text);
     const spoken = await stackchanAnnounce(text);
     res.json({ fired: true, pushed, spoken, silenceH: +silenceH.toFixed(1), text });
