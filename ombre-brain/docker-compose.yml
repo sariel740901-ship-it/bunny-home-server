@@ -32,6 +32,9 @@ services:
       - OMBRE_EMBED_BASE_URL=${OMBRE_EMBED_BASE_URL:-}
       - OMBRE_EMBED_MODEL=${OMBRE_EMBED_MODEL:-}
       - OMBRE_DASHBOARD_PASSWORD=${OMBRE_DASHBOARD_PASSWORD}
+      # MCP 鉴权模式: oauth(默认)/token/hybrid。设 hybrid 后既认 claude.ai 的
+      # OAuth,也认 Dashboard 生成的静态 MCP token(bunny 逐字存记忆、心潮记忆闭环用)
+      - OMBRE_MCP_AUTH_MODE=${OMBRE_MCP_AUTH_MODE:-oauth}
     volumes:
       - ./buckets:/app/buckets
 
