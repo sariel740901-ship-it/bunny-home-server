@@ -160,10 +160,12 @@ body.hide-os .os{display:none}
 .tg.tg-sm i::after{width:16px;height:16px}
 .tg.tg-sm input:checked+i::after{transform:translateX(16px)}
 .tool-row{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:13px}
-/* 思考链: 一行小胶囊,点开是弹窗 */
+/* 思考链: 小结露在外面(clamp 三行),点开是弹窗;没小结的旧消息显示"他想了想" */
 .think{margin:2px 0 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif}
 .think-hd{display:inline-block;font-size:12px;color:var(--muted);cursor:pointer;padding:3px 11px;border:1px solid var(--border);border-radius:11px;user-select:none;-webkit-user-select:none;transition:color .15s,border-color .15s}
 .think-hd:hover{color:var(--accent);border-color:var(--accent)}
+.think-hd.has-sum{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;border:none;border-left:2px solid var(--border);border-radius:0;padding:1px 2px 1px 10px;font-size:12.5px;line-height:1.65;font-style:italic}
+.think-hd.has-sum:hover{border-color:var(--accent)}
 .tool-row b{font-weight:600;white-space:nowrap}
 .tool-row .td{flex:1;color:var(--muted);font-size:12px;line-height:1.5}
 .tool-row .st{font-size:11.5px;white-space:nowrap;color:var(--muted)}
@@ -662,12 +664,15 @@ function addRow(role,ts){
   bub.scrollIntoView({behavior:'smooth'});
   return {row,bub,wrap};
 }
-// 思考链: 摘出开头的 [think]...[/think]
+// 思考链: 摘出开头的 [tsum]小结[/tsum](可选) + [think]原思考[/think]
 function splitThink(content){
   content=String(content==null?'':content);
+  let sum='';
+  const sm=content.match(/^\s*\[tsum\]([\s\S]*?)\[\/tsum\]\s*/);
+  if(sm){sum=sm[1].trim();content=content.slice(sm[0].length);}
   const m=content.match(/^\s*\[think\]([\s\S]*?)\[\/think\]\s*/);
-  if(!m)return {think:'',rest:content};
-  return {think:m[1].trim(),rest:content.slice(m[0].length)};
+  if(!m)return {think:'',sum,rest:content};
+  return {think:m[1].trim(),sum,rest:content.slice(m[0].length)};
 }
 // 内心OS: 摘出 [os:...] 那句没说出口的
 // 模型偶尔不把它放最末尾(比如表情包压轴),所以全文找,取最后一处显示
@@ -686,16 +691,17 @@ function openThink(text){
 function closeThink(){document.getElementById('thinkModal').classList.remove('show')}
 // live=true 是刚说的这句;历史消息不挂语音条,免得翻记录就烧掉语音额度
 function fillAssistant(parts,content,live){
-  const {think,rest}=splitThink(content);
+  const {think,sum,rest}=splitThink(content);
   const {text,os}=splitOS(rest);
   const bub=parts.bub;bub.innerHTML='';
   const stickerOnly=/^\s*\[sticker:[^\]]+\]\s*$/.test(text);
   bub.classList.toggle('sticker-only',stickerOnly);
-  // 思考链: 收在最前面,点开是弹窗
-  if(think&&!stickerOnly){
+  // 思考链: 小结露在外面,点开弹窗看完整的原思考
+  if((think||sum)&&!stickerOnly){
     const tk=document.createElement('div');tk.className='think';
-    const hd=document.createElement('div');hd.className='think-hd';hd.textContent='他想了想';
-    hd.onclick=()=>openThink(think);
+    const hd=document.createElement('div');hd.className='think-hd'+(sum?' has-sum':'');
+    hd.textContent=sum||'他想了想';
+    hd.onclick=()=>openThink(think||sum);
     tk.appendChild(hd);bub.appendChild(tk);
   }
   const speech=stickerOnly?'':text.replace(/\[sticker:[^\]]+\]/g,' ').trim();
@@ -1041,7 +1047,7 @@ function showZhSubtitle(text){
 
 async function speakAsync(text){
   // 思考链、表情包暗号和心声 [os:...] 不朗读、不进字幕
-  text=String(text||'').replace(/\[think\][\s\S]*?\[\/think\]/g,' ').replace(/\[sticker:[^\]]+\]/g,' ').replace(/\[os:[\s\S]*?\]/g,' ').trim();
+  text=String(text||'').replace(/\[tsum\][\s\S]*?\[\/tsum\]/g,' ').replace(/\[think\][\s\S]*?\[\/think\]/g,' ').replace(/\[sticker:[^\]]+\]/g,' ').replace(/\[os:[\s\S]*?\]/g,' ').trim();
   if(!text)return;
   speakQueue=splitForTTS(text);
   showZhSubtitle(text);
