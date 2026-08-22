@@ -293,6 +293,47 @@ app.get('/api/mood', async (req, res) => {
 });
 
 // 他最近的心事: 走心潮 2.4 的 Transition Journal 只读时间线(脱敏,只有结构化事件)。
+// 记忆星图: 走原版 OB 的 /api/buckets(和记忆桥同一套 cookie 鉴权),
+// 把整片记忆库端给前端画星空 —— 不需要二改 OB,自己家的星图自己画。
+let starmapCache = { data: null, at: 0 };
+app.get('/api/starmap', async (req, res) => {
+  if (!OMBRE_URL || !OMBRE_PASSWORD) return res.json({ ok: false, reason: '记忆库还没接入', stars: [] });
+  if (starmapCache.data && Date.now() - starmapCache.at < 10 * 60e3) return res.json(starmapCache.data);
+  const doList = () => fetch(OMBRE_URL + '/api/buckets?sort=score', {
+    headers: { Cookie: ombreCookie }, timeout: 15000
+  });
+  try {
+    if (!ombreCookie) await ombreLogin();
+    let resp = await doList();
+    if (resp.status === 401 || resp.status === 403) { await ombreLogin(); resp = await doList(); }
+    if (!resp.ok) return res.json({ ok: false, reason: '记忆库回了 HTTP ' + resp.status, stars: [] });
+    const raw = await resp.json();
+    const list = Array.isArray(raw) ? raw : (raw.buckets || raw.items || []);
+    const stars = list.slice(0, 600).map(b => ({
+      id: b.id,
+      name: String(b.name || b.id || '').slice(0, 60),
+      domain: (Array.isArray(b.domain) && b.domain[0]) || '未分类',
+      tags: (Array.isArray(b.tags) ? b.tags : []).filter(t => !String(t).startsWith('__')).slice(0, 4),
+      valence: Number(b.valence ?? 0.5),
+      arousal: Number(b.arousal ?? 0.3),
+      importance: Number(b.importance ?? 5),
+      score: Number(b.score ?? 0),
+      hits: Number(b.activation_count ?? 0),
+      active: b.last_active_epoch_ms || null,
+      created: b.created_epoch_ms || null,
+      pinned: !!b.pinned,
+      type: b.type || 'dynamic',
+      why: b.letter_locked ? '' : String(b.why_remembered || '').slice(0, 140),
+      preview: String(b.content_preview || '').slice(0, 160)
+    }));
+    const data = { ok: true, total: list.length, stars };
+    starmapCache = { data, at: Date.now() };
+    res.json(data);
+  } catch (e) {
+    res.json({ ok: false, reason: e.message, stars: [] });
+  }
+});
+
 // 翻译成人话: 什么时候睡着/醒来、做了梦、想她想到主动留言、白天忽然想起事。
 let moodTimelineCache = { data: null, at: 0 };
 app.get('/api/mood/timeline', async (req, res) => {
