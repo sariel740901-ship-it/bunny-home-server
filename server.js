@@ -8,6 +8,27 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ═══ 门禁: /api 密钥 ═══════════════════════
+// 设了 BUNNY_API_KEY 才上锁;没设就保持原样(先部署代码、后配钥匙,不会把自己锁在门外)。
+// /api/heartbeat 不走这道门 —— 它有自己的 HEARTBEAT_TOKEN。
+const crypto = require('crypto');
+const BUNNY_API_KEY = process.env.BUNNY_API_KEY || '';
+function bunnyKeyOk(supplied) {
+  const a = Buffer.from(String(supplied || ''));
+  const b = Buffer.from(BUNNY_API_KEY);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+app.use('/api', (req, res, next) => {
+  if (!BUNNY_API_KEY) return next();
+  if (req.path === '/heartbeat') return next();
+  const auth = req.get('authorization') || '';
+  const supplied = req.get('x-api-key')
+    || (auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : '')
+    || req.query.key || '';
+  if (bunnyKeyOk(supplied)) return next();
+  res.status(401).json({ error: 'key required' });
+});
+
 // ═══ 初始化 Supabase ═══════════════════════
 let supabase = null;
 try {

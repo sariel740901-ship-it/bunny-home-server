@@ -260,6 +260,27 @@ body.hide-os .os{display:none}
 </div>
 
 <script>
+// ═══ 门禁钥匙 ═══════════════════════════════════════════
+// 服务端设了 BUNNY_API_KEY 后,这里自动给所有 /api 请求带上钥匙。
+// 第一次(或钥匙换了)会弹一次输入框,存 localStorage,之后不再问。
+const BUNNY_KEY_LS='bunny_api_key';
+(function(){
+  const orig=window.fetch.bind(window);
+  const withKey=(opts,k)=>{opts=Object.assign({},opts);opts.headers=Object.assign({},opts.headers,k?{'x-api-key':k}:{});return opts};
+  window.fetch=async function(url,opts){
+    if(typeof url!=='string'||!url.startsWith('/api'))return orig(url,opts);
+    let k=localStorage.getItem(BUNNY_KEY_LS)||'';
+    let r=await orig(url,withKey(opts,k));
+    while(r.status===401){
+      const input=prompt('这扇门上了锁 — 输入家里的钥匙 (BUNNY_API_KEY)');
+      if(input===null)break;
+      k=input.trim();localStorage.setItem(BUNNY_KEY_LS,k);
+      r=await orig(url,withKey(opts,k));
+    }
+    return r;
+  };
+})();
+
 let persona='xiaoke',loading=!1,sessionId=null,callOpen=!1,callTimer=0,callInterval=null;
 let recognition=null,recognitionWanted=!1,audioCtx=null,speaking=!1,speakQueue=[];
 
