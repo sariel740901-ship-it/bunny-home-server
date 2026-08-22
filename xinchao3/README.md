@@ -72,8 +72,9 @@ docker compose up -d
   以后每月一次,档案在 `state/personality.json` 里慢慢攒成"他是谁"。
 - **行为锚点**: 他认定了什么底线(或你们商量好了),让他用 `xinchao_anchor_update`
   写进去,最多 7 条 —— 之后每次开口这些底线都排在他心里最前面,驱力再高也压不过。
-- **记忆闭环**: `OMBRE_READ_ENABLED=true` 已开 —— 他此刻最强的心思会影响
-  记忆库里浮现哪段;写仍然关着,梦不进主记忆河的家规不变。
+- **记忆闭环(二阶段,暂关)**: `OMBRE_READ_ENABLED` 先关着 —— 3.x 开它会强制
+  要求 `OMBRE_MCP_TOKEN`,而原版 OB 的 /mcp 默认走 OAuth,需要先在 OB 侧配
+  静态 MCP token 才能通。想开的时候两边一起配;写永远关着,梦不进主记忆河。
 
 ## 和这个仓库其他部分的关系
 
