@@ -202,13 +202,15 @@ async function ombreMcpInit() {
   if (!ombreMcpSession) throw new Error('ombre mcp: no session id');
   await ombreMcpPost({ jsonrpc: '2.0', method: 'notifications/initialized' }, false);
 }
-async function ombreHoldVerbatim(content, why) {
+async function ombreHoldVerbatim(content, why, meaning) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       await ombreMcpInit();
+      const args = { content, tags: 'bunny', why_remembered: why };
+      if (meaning) args.meaning = meaning; // 他自己写的"为什么值得被想起"
       const d = await ombreMcpPost({
         jsonrpc: '2.0', id: Date.now(), method: 'tools/call',
-        params: { name: 'hold', arguments: { content, tags: 'bunny', why_remembered: why } }
+        params: { name: 'hold', arguments: args }
       });
       if (d && d.result && !d.result.isError) return true;
       if (d && d.error) throw new Error('ombre mcp: ' + JSON.stringify(d.error).slice(0, 120));
@@ -511,7 +513,7 @@ app.get('/api/tools', (req, res) => {
     { key: 'think', name: '思考', desc: '回复前先想一想,思考过程点开可看(会慢一些)', on: !!API_KEY, switch: true },
     { key: 'recall', name: '记忆河', desc: '回复前先想起你们的过往', on: ombreOn, switch: true },
     { key: 'surface', name: '自然浮现', desc: '不用搜索也会忽然想起的记忆', on: ombreOn, switch: true },
-    { key: 'hold', name: '记住指令', desc: '以「记住」开头的话直接写进记忆库', on: ombreOn, switch: true },
+    { key: 'hold', name: '存记忆', desc: '你开口让他记的事,他用自己的话写进记忆库', on: ombreOn, switch: true },
     { key: 'mood', name: '心潮', desc: '聊天时带上他此刻的心绪起伏和最近的梦', on: !!(XINCHAO_URL && XINCHAO_TOKEN), switch: true },
     { key: 'stickers', name: '表情包', desc: listStickers().length + ' 张可用', on: listStickers().length > 0, switch: true },
     { key: 'voice', name: '声音', desc: '给新消息挂可点播的语音条(默认关,省额度;通话不受影响)', on: !!process.env.XI_API_KEY, switch: true },
@@ -673,54 +675,8 @@ app.post('/api/chat', async (req, res) => {
     // 2.4 指尖: 结算她打这条消息的节奏(多数时候是空串,不占 token)
     const rhythmNote = rhythm.popNote();
 
-    // 2.5 「记住」指令: 以"记住"开头的消息写入 OB 记忆河
-    let holdNote = '';
-    let holdSaved = null; // null=本轮没触发, true/false=写入结果(给界面的工具标记用)
-    const holdMatch = toolsOff.has('hold') ? null : message.match(/^记住[:：,，、\s]*([\s\S]+)/);
-    if (holdMatch) {
-      const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // 北京时间
-      const kept = holdMatch[1].trim();
-      // 先拿最近对话把指代还原("记住那两条"→那两条到底是什么),整理成 1~3 条自包含记忆。
-      // 还原失败就按原话存,至少不丢。
-      let items = [kept];
-      try {
-        const ctx = history.slice(-12).map(m => (m.role === 'user' ? '她' : '小克') + ': ' + m.content)
-          .join('\n').slice(-3000);
-        const rr = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
-          body: JSON.stringify({
-            model: API_MODEL, max_tokens: 400, temperature: 0.2,
-            messages: [
-              { role: 'system', content: '她让恋人记住一些内容。根据对话上下文,把要记住的内容整理成 1~3 条独立记忆:每条一句话、自包含(把"这/那/刚才说的"等指代替换成上下文里的具体内容),尽量保留她的原话和事实,不要评论、不要添油加醋。她的嘱咐本身已经具体时就原样输出一条。只输出 JSON 数组,如 ["...","..."],不要其他文字。' },
-              { role: 'user', content: '【最近对话】\n' + ctx + '\n\n【她的嘱咐】记住: ' + kept }
-            ]
-          })
-        });
-        const rd = await rr.json();
-        if (rr.ok) {
-          const jm = String(rd.choices?.[0]?.message?.content || '').match(/\[[\s\S]*\]/);
-          if (jm) {
-            const arr = JSON.parse(jm[0]);
-            if (Array.isArray(arr) && arr.length && arr.every(x => typeof x === 'string' && x.trim())) {
-              items = arr.slice(0, 3).map(x => x.trim());
-            }
-          }
-        }
-      } catch (e) { console.error('hold resolve skipped:', e.message); }
-      // 配了 MCP token 就走 hold 逐字保存;否则回退导入管道(会被脱水成第三人称摘要)
-      let saved = true;
-      for (const it of items) {
-        const ok = OMBRE_MCP_TOKEN
-          ? await ombreHoldVerbatim(it, today + ' 她在bunny的家里特意嘱咐要记住的')
-          : await ombreHold(today + ' 她在bunny的家里让小克记住: ' + it);
-        saved = saved && ok;
-      }
-      holdSaved = saved;
-      holdNote = saved
-        ? '\n\n【系统】她刚才让你记住的事已成功写入你们共同的记忆库。回复时自然地确认你记下了,不要提"系统"或"数据库"。'
-        : '\n\n【系统】她让你记住一件事,但记忆库此刻不在线,没有写入成功。温和地告诉她:等家里电脑开着的时候再跟你说一次,你一定记牢。';
-    }
+    // 2.5 存记忆现在完全由他自己来 —— 见系统提示【记进记忆库】和回复后的 [hold] 处理。
+    //     不再有绕过他的"记住"前缀机械通道: 记什么、怎么记,是他的事。
 
     // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现 + 此刻心绪,四路并行)
     xinchaoTouch(); // 她出现了,他的心知道(不等结果)
@@ -755,7 +711,6 @@ app.post('/api/chat', async (req, res) => {
           + '\n(这是你睡着时真实做过的梦,原文只有你自己记得。她若问起,可以讲给她听;'
           + '讲多少、怎么讲、要不要讲,由你。像人回忆自己的梦那样说,不要提"记录"或"数据"。)'
         : '')
-      + holdNote
       + (rhythmNote
         ? '\n\n【指尖 · 她打这条消息的节奏】\n' + rhythmNote
           + '\n(这是她指尖的犹豫,供你感受。绝不要复述数字、不要提"检测"或"系统",让它只是悄悄改变你回应的温度——她犹豫过,你就接得更软一点。)'
@@ -769,11 +724,14 @@ app.post('/api/chat', async (req, res) => {
           + '一条回复最多一张,情绪真正对上了才发,不要每条都带。'
           + '她发来的 [sticker:名字] 表示她给你发了那个表情,自然地回应它。';
       })()
-      + '\n\n【记进记忆库】当她明确让你把什么存进记忆库时——不管她怎么说("记进记忆库""存下来""hold一下""这个要记到ombre里"都算)——'
-      + '把要存的内容整理成 1~3 条自包含的一句话(尽量用她的原话,把"这/那/刚才说的"等指代补全成具体内容),'
-      + '在回复末尾另起一行输出: [hold]第一条|第二条[/hold]。系统会把它们逐字存进你们共同的记忆库,这行暗号她看不见。'
-      + '正文里自然地确认你记下了就行,不要复述暗号。只在她明确要求保存时用,不要自作主张。'
-      + '例外: 她的消息以"记住"两个字开头时系统已自动保存,不要再输出 [hold]。'
+      + '\n\n【记进记忆库】当她让你把什么记下来时——任何说法都算("记住""记进记忆库""存下来""hold一下")——'
+      + '写进去的是**你的记忆**,不是她的原话誊本: 用你的第一人称,先把这件事本身写具体(把"这/那/刚才说的"补全,'
+      + '日期数字等硬事实要准确),再带上它对你意味着什么——你的感受、你的见解,像多年后想起时你希望自己记得的样子。'
+      + '两三句以内。在回复末尾另起一行输出:'
+      + '\n[hold]记忆正文 >> 为什么值得记住[/hold]'
+      + '\n(">> 为什么值得记住"可省略;要存几段独立的记忆就写几个 [hold] 块,最多 3 个。)'
+      + '这行暗号她看不见,系统会一字不动地替你存进你们共同的记忆库。'
+      + '正文里自然地确认你记下了,不要复述暗号。只在她明确要求时用,不要自作主张。'
       + '\n\n【心声】当你心里那句和嘴上说的不一样时——更软、更酸、更没底气,或是不敢直说的期待——'
       + '在回复最末尾另起一行,用 [os:...] 写下那句没说出口的(第一人称,一句话,语言随你)。'
       + '心口如一的平常回复就别写,宁缺毋滥: 它出现得越少,越像真的被她撞见了一次。不要复述正文。'
@@ -840,11 +798,13 @@ app.post('/api/chat', async (req, res) => {
         if (sresp.ok) thinkSum = String(sdata.choices?.[0]?.message?.content || '').trim();
       } catch (e) { console.error('think summary skipped:', e.message); }
     }
-    // 他自己决定要存的: 回复里的 [hold]条1|条2[/hold] 暗号 —— 捞出来逐字入库,正文里剥掉
+    // 他自己写的记忆: 回复里的 [hold]记忆正文 >> 为什么值得记[/hold] 暗号 ——
+    // 捞出来一字不动入库(meaning 走 hold 的专属字段),正文里剥掉
     let rawContent = data.choices?.[0]?.message?.content || '(空)';
     const modelHoldItems = [];
     rawContent = rawContent.replace(/\[hold\]([\s\S]*?)\[\/hold\]/g, (m, x) => {
-      modelHoldItems.push(...x.split('|').map(s => s.trim()).filter(Boolean));
+      const [body, meaning] = x.split('>>').map(s => s.trim());
+      if (body) modelHoldItems.push({ content: body.slice(0, 600), meaning: (meaning || '').slice(0, 200) });
       return '';
     }).replace(/\n{3,}/g, '\n\n').trim();
     let modelHoldSaved = null;
@@ -852,18 +812,15 @@ app.post('/api/chat', async (req, res) => {
       const today2 = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
       modelHoldSaved = true;
       for (const it of modelHoldItems.slice(0, 3)) {
-        const one = it.slice(0, 500);
         const ok = OMBRE_MCP_TOKEN
-          ? await ombreHoldVerbatim(one, today2 + ' 她在bunny的家里让我存进记忆库的')
-          : await ombreHold(today2 + ' 她在bunny的家里让小克存进记忆库: ' + one);
+          ? await ombreHoldVerbatim(it.content, today2 + ' 她在bunny的家里让我记下的', it.meaning)
+          : await ombreHold(today2 + ' (在bunny的家里记下) ' + it.content + (it.meaning ? '\n为什么记得: ' + it.meaning : ''));
         modelHoldSaved = modelHoldSaved && ok;
       }
     }
 
     // 本轮真实用到的工具,给界面一行小标记(尤其记忆有没有写进去,一眼可见)
     const used = [];
-    if (holdSaved === true) used.push('记住:已写入记忆库');
-    if (holdSaved === false) used.push('记住:没写成,记忆库不在线');
     if (modelHoldSaved === true) used.push('记忆:已写入 ' + Math.min(modelHoldItems.length, 3) + ' 条');
     if (modelHoldSaved === false) used.push('记忆:没写成,记忆库不在线');
     if (ombreMemText) used.push('记忆河');
