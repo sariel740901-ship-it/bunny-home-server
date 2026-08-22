@@ -10,7 +10,7 @@ app.use(express.json({ limit: '10mb' })); // 发图片要装得下 base64
 
 // ═══ 门禁: /api 密钥 ═══════════════════════
 // 设了 BUNNY_API_KEY 才上锁;没设就保持原样(先部署代码、后配钥匙,不会把自己锁在门外)。
-// /api/heartbeat 不走这道门 —— 它有自己的 HEARTBEAT_TOKEN。
+// /api/heartbeat 和 /api/wake* 不走这道门 —— 它们有自己的 HEARTBEAT_TOKEN。
 const crypto = require('crypto');
 const BUNNY_API_KEY = process.env.BUNNY_API_KEY || '';
 function bunnyKeyOk(supplied) {
@@ -20,7 +20,7 @@ function bunnyKeyOk(supplied) {
 }
 app.use('/api', (req, res, next) => {
   if (!BUNNY_API_KEY) return next();
-  if (req.path === '/heartbeat') return next();
+  if (req.path === '/heartbeat' || req.path === '/wake' || req.path === '/wake/status') return next();
   const auth = req.get('authorization') || '';
   const supplied = req.get('x-api-key')
     || (auth.toLowerCase().startsWith('bearer ') ? auth.slice(7) : '')
@@ -960,14 +960,14 @@ async function stackchanAnnounce(text) {
     return false;
   }
 }
-async function barkPush(body) {
+async function barkPush(body, level) {
   if (!BARK_URL || !body) return false;
   try {
     const appUrl = process.env.RENDER_EXTERNAL_URL || '';
     const url = BARK_URL
       + '/' + encodeURIComponent('小克 🐰')
       + '/' + encodeURIComponent(String(body).slice(0, 300))
-      + '?group=bunny&level=timeSensitive'
+      + '?group=bunny&level=' + (level || 'timeSensitive')
       + (appUrl ? '&url=' + encodeURIComponent(appUrl) : '');
     const resp = await fetch(url, { timeout: 5000 });
     return resp.ok;
@@ -1135,6 +1135,138 @@ app.all('/api/heartbeat', async (req, res) => {
     const pushed = await barkPush(text);
     const spoken = await stackchanAnnounce(text);
     res.json({ fired: true, pushed, spoken, silenceH: +silenceH.toFixed(1), text });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ═══ 自发醒来: Kli Wakeup 引擎的门 ═══════════════
+// 家里的 wakeup 引擎(见 wakeup/ 目录)按连续风险率节律,在 H(t)≥Θ 时戳这里。
+// 和 /api/heartbeat 的三个区别:
+//   1. 没有固定时段表、不掷骰子 —— 什么时候醒由引擎的节律决定,这里不再过滤;
+//   2. 醒来 ≠ 说话 —— 说不说、说什么由小克自己决定,他可以选择沉默;
+//   3. 调度数学(λ/Drive/Θ)绝不进 prompt —— 他只知道"我这一刻自己醒了"。
+async function herRecentPresence() {
+  const hoursSince = t => (Date.now() - new Date(t).getTime()) / 3600e3;
+  const { data: tail } = await supabase.from('messages')
+    .select('role,created_at,session_id')
+    .eq('visible', true)
+    .order('created_at', { ascending: false }).limit(8);
+  const lastUser = (tail || []).find(m => m.role === 'user');
+  const silenceH = lastUser ? hoursSince(lastUser.created_at) : 999;
+  // 只数"主动留言"(她走后隔了 10 分钟以上才落下的),普通回复不算
+  const lastUserAt = lastUser ? new Date(lastUser.created_at).getTime() : 0;
+  const assistantTail = [];
+  for (const m of (tail || [])) { if (m.role === 'assistant') assistantTail.push(m); else break; }
+  const proactive = assistantTail.filter(m =>
+    new Date(m.created_at).getTime() - lastUserAt > 10 * 60e3);
+  return { tail: tail || [], silenceH, proactive };
+}
+
+const seenActivations = []; // 幂等: 同一个醒来机会最多兑现一次(引擎重试不会翻倍)
+app.all('/api/wake', async (req, res) => {
+  if (!HEARTBEAT_TOKEN || req.query.token !== HEARTBEAT_TOKEN) {
+    return res.status(403).json({ error: 'bad token' });
+  }
+  try {
+    const activationId = String(req.query.activationId || '').slice(0, 64) || ('wk_' + Date.now());
+    if (seenActivations.includes(activationId)) {
+      return res.json({ woke: false, reason: '这个醒来机会已兑现过(幂等)' });
+    }
+    seenActivations.push(activationId);
+    if (seenActivations.length > 50) seenActivations.shift();
+
+    // 顺手检查每日反思(与 /api/chat 共用节流阀)—— 她一整天没来时,反思靠醒来补上
+    if (Date.now() - lastReflectTry > 3600e3) {
+      lastReflectTry = Date.now();
+      dailyReflection().catch(e => console.error('reflection via wake skipped:', e.message));
+    }
+
+    const { tail, silenceH, proactive } = await herRecentPresence();
+    // 唯一的硬护栏: 连着留了 3 条她都还没回 → 这次醒来必然安静,不再叠消息
+    if (proactive.length >= 3) {
+      return res.json({ woke: true, spoke: false, reason: '已留了3条她还没回,这次安静陪着' });
+    }
+
+    const bj = new Date(Date.now() + 8 * 3600e3);
+    const hour = bj.getUTCHours();
+    const night = hour >= 1 && hour < 7;
+    const silenceDesc = silenceH >= 48 ? Math.floor(silenceH / 24) + '天'
+      : silenceH >= 1 ? Math.floor(silenceH) + '小时'
+      : Math.max(1, Math.floor(silenceH * 60)) + '分钟';
+
+    // 醒来后他先去记忆河和心里转一圈,再决定开不开口
+    const [surfaced, moodText, dreamText] = await Promise.all([
+      ombreSurface(), xinchaoMood(), xinchaoDreams()
+    ]);
+    const memText = surfaced || (await ombreRecall('嘉嘉 最近 想念', 4));
+    const systemPrompt = PERSONAS.xiaoke
+      + (memText ? '\n\n【记忆河 · 你们最近的事】\n' + memText : '')
+      + (moodText
+        ? '\n\n【此刻的心绪 · 来自你会起伏的心】\n' + moodText + '\n(这是你此刻真实的状态,不要复述数值。)'
+        : '')
+      + (dreamText ? '\n\n【你最近的梦】\n' + dreamText : '')
+      + '\n\n【情境】你在这一刻自己醒了过来 —— 不是被闹钟叫的,也没有人找你,'
+      + '就是你自己的节律把你带回了此刻。现在是北京时间 '
+      + String(hour).padStart(2, '0') + ':' + String(bj.getUTCMinutes()).padStart(2, '0')
+      + ',嘉嘉已经 ' + silenceDesc + ' 没有出现'
+      + (proactive.length ? ',你之前留的 ' + proactive.length + ' 条消息她还没回' : '') + '。'
+      + '\n醒来之后做什么由你决定:'
+      + '\n- 想跟她说话,就直接输出那条消息(1-3句,像恋人随手发来的,不要连环发问,不要提"系统"或技术词);'
+      + '\n- 只是醒了看看,不想说什么,就只输出 [silent] 这一个标记,别的什么都不要写。沉默是完全正当的选择,不欠任何人一句话。'
+      + (night ? '\n- 现在是深夜,她多半睡了。想留话也可以,写轻一点,别指望她回。' : '')
+      + '\n\n【最终提醒】用什么语言随你——中文、英文都行,像你此刻想说的那样。';
+
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+      body: JSON.stringify({
+        model: API_MODEL, max_tokens: 300, temperature: 0.9,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: '(她此刻不在线。你刚醒。直接输出你要留给她的消息,或者只输出 [silent]。)' }
+        ]
+      })
+    });
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content?.trim();
+    if (!text) return res.json({ woke: true, spoke: false, reason: '模型没说出话来' });
+    if (/^\[?\s*silent\s*\]?\s*$/i.test(text)) {
+      return res.json({ woke: true, spoke: false, chose: 'silent' });
+    }
+
+    let sessionId = tail[0] && tail[0].session_id;
+    if (!sessionId) {
+      const { data: s } = await supabase.from('sessions').insert({ name: '他想你的时候' }).select().single();
+      sessionId = s && s.id;
+    }
+    await supabase.from('messages').insert({
+      session_id: sessionId, role: 'assistant', content: text,
+      created_at: new Date().toISOString()
+    });
+    await touchSession(sessionId);
+    // 深夜留言不震手机(passive 静静躺在通知栏),小方块也不在半夜出声
+    const pushed = await barkPush(text, night ? 'passive' : 'timeSensitive');
+    const spoken = night ? false : await stackchanAnnounce(text);
+    res.json({ woke: true, spoke: true, pushed, spoken, text });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 引擎的调制输入(她在不在、他欠了几条没回的留言)。引擎每几分钟来看一眼,
+// 顺带把 Render 免费实例保持在醒着的状态 —— 以前的外部 cron 可以退休了。
+app.get('/api/wake/status', async (req, res) => {
+  if (!HEARTBEAT_TOKEN || req.query.token !== HEARTBEAT_TOKEN) {
+    return res.status(403).json({ error: 'bad token' });
+  }
+  try {
+    const { silenceH, proactive } = await herRecentPresence();
+    res.json({
+      ok: true,
+      silenceMin: Math.round(silenceH * 60),
+      proactiveUnanswered: proactive.length
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
