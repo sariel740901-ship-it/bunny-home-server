@@ -166,7 +166,62 @@ async function ombreSurface() {
   }
 }
 
-// 写入记忆: 走 OB 的导入接口(cookie 鉴权,纯文本会被自动脱水打标入桶)
+// ── 写入记忆,首选: OB 的 MCP hold 工具(逐字保存,绝不压缩正文)──
+// 需要 OMBRE_MCP_TOKEN(OB Dashboard 生成的静态 MCP token,OB 侧 mcp_auth_mode
+// 设为 token 或 hybrid)。没配则回退老的导入接口(会被脱水总结成第三人称)。
+const OMBRE_MCP_TOKEN = process.env.OMBRE_MCP_TOKEN || '';
+let ombreMcpSession = null;
+async function ombreMcpPost(payload, expectBody = true) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+    'Authorization': 'Bearer ' + OMBRE_MCP_TOKEN
+  };
+  if (ombreMcpSession) headers['Mcp-Session-Id'] = ombreMcpSession;
+  const resp = await fetch(OMBRE_URL + '/mcp', {
+    method: 'POST', headers, body: JSON.stringify(payload), timeout: 12000
+  });
+  if (!resp.ok) throw new Error('ombre mcp HTTP ' + resp.status);
+  ombreMcpSession = resp.headers.get('mcp-session-id') || ombreMcpSession;
+  if (!expectBody) return null;
+  const text = await resp.text();
+  if (!text) return null;
+  // streamable-http 可能回 SSE 格式,取最后一行 data
+  if (text.includes('data:')) {
+    const lines = text.split('\n').filter(l => l.startsWith('data:'));
+    return JSON.parse(lines[lines.length - 1].slice(5).trim());
+  }
+  return JSON.parse(text);
+}
+async function ombreMcpInit() {
+  if (ombreMcpSession) return;
+  await ombreMcpPost({
+    jsonrpc: '2.0', id: Date.now(), method: 'initialize',
+    params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'bunny-home', version: '1.0' } }
+  });
+  if (!ombreMcpSession) throw new Error('ombre mcp: no session id');
+  await ombreMcpPost({ jsonrpc: '2.0', method: 'notifications/initialized' }, false);
+}
+async function ombreHoldVerbatim(content, why) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await ombreMcpInit();
+      const d = await ombreMcpPost({
+        jsonrpc: '2.0', id: Date.now(), method: 'tools/call',
+        params: { name: 'hold', arguments: { content, tags: 'bunny', why_remembered: why } }
+      });
+      if (d && d.result && !d.result.isError) return true;
+      if (d && d.error) throw new Error('ombre mcp: ' + JSON.stringify(d.error).slice(0, 120));
+      return !!d;
+    } catch (e) {
+      ombreMcpSession = null; // OB 重启后旧会话失效,刷一次再试
+      if (attempt) { console.error('ombre hold(mcp) skipped:', e.message); return false; }
+    }
+  }
+  return false;
+}
+
+// 写入记忆,回退路: OB 的导入接口(cookie 鉴权,纯文本会被自动脱水打标入桶)
 async function ombreHold(text) {
   if (!OMBRE_URL || !OMBRE_PASSWORD || !text) return false;
   const boundary = '----bunnyhold' + Date.now();
@@ -619,7 +674,11 @@ app.post('/api/chat', async (req, res) => {
     const holdMatch = toolsOff.has('hold') ? null : message.match(/^记住[:：,，、\s]*([\s\S]+)/);
     if (holdMatch) {
       const today = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // 北京时间
-      const saved = await ombreHold(today + ' 她在bunny的家里让小克记住: ' + holdMatch[1].trim());
+      const kept = holdMatch[1].trim();
+      // 配了 MCP token 就走 hold 逐字保存;否则回退导入管道(会被脱水成第三人称摘要)
+      const saved = OMBRE_MCP_TOKEN
+        ? await ombreHoldVerbatim(kept, today + ' 她在bunny的家里特意嘱咐要记住的')
+        : await ombreHold(today + ' 她在bunny的家里让小克记住: ' + kept);
       holdSaved = saved;
       holdNote = saved
         ? '\n\n【系统】她刚才让你记住的事已成功写入你们共同的记忆库。回复时自然地确认你记下了,不要提"系统"或"数据库"。'
