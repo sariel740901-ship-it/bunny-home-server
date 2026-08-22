@@ -582,6 +582,14 @@ app.get('/api/settings', async (req, res) => {
 });
 
 // ═══ 核心对话 ═════════════════════════════
+// 上下文预算(token): 历史从最新往回装,装满为止。默认 30k ≈ 两万多汉字。
+const CONTEXT_BUDGET_TOKENS = Math.max(2000, parseInt(process.env.CONTEXT_BUDGET_TOKENS || '30000', 10) || 30000);
+// 粗估 token: 汉字≈1个,其余字符≈4字符1个。宁可高估,不撑爆预算。
+function estTokens(t) {
+  t = String(t || '');
+  const zh = (t.match(/[一-鿿]/g) || []).length;
+  return zh + Math.ceil((t.length - zh) / 4);
+}
 // 存进消息里的标记: [tsum]小结[/tsum][think]原思考[/think][tools]本轮用了什么[/tools] 开头。
 // 拼上下文/反思/朗读时都要剥掉。
 function stripThink(text) {
@@ -660,7 +668,7 @@ app.post('/api/chat', async (req, res) => {
     if (session_id) {
       const { data: msgs } = await supabase.from('messages')
         .select('*').eq('session_id', session_id).eq('visible', true)
-        .order('created_at', { ascending: false }).limit(30);
+        .order('created_at', { ascending: false }).limit(200);
       history = (msgs || []).reverse().map(m => ({ role: m.role, content: imgToText(stripThink(m.content)) }));
     }
 
@@ -740,8 +748,17 @@ app.post('/api/chat', async (req, res) => {
       + '\n\n【最终提醒】回复用什么语言完全随你——中文、英文,或自然地混着,跟着心情和她走,不用刻意。'
       + '只有一条硬规矩: 表情包暗号 [sticker:名字] 里的名字必须照抄原文,不许翻译。';
 
-    // 最近 20 轮 + 当前这句;若历史末尾已有一模一样的这句(旧的重复数据),先剔掉再拼
-    const recent = history.slice(-20);
+    // 历史按 token 预算截取: 从最新往回装,装满为止 —— 短消息多带、长消息少带,
+    // 窗口深度稳定;预算可用 CONTEXT_BUDGET_TOKENS 调(模型窗口 128k,余量很大)。
+    const recent = [];
+    let ctxBudget = CONTEXT_BUDGET_TOKENS;
+    for (let i = history.length - 1; i >= 0; i--) {
+      const cost = estTokens(history[i].content) + 4;
+      if (cost > ctxBudget) break;
+      ctxBudget -= cost;
+      recent.unshift(history[i]);
+    }
+    // 若历史末尾已有一模一样的这句(旧的重复数据),先剔掉再拼
     while (recent.length && recent[recent.length - 1].role === 'user'
       && recent[recent.length - 1].content === modelMessage) recent.pop();
     const messages = [...recent, { role: 'user', content: modelMessage }];
