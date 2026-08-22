@@ -18,7 +18,8 @@ from fastmcp import FastMCP
 BASE_DIR = Path(__file__).parent
 SUPABASE_URL = (os.environ.get("SUPABASE_URL", "") or "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-PORT = int(os.environ.get("MCP_PORT", "8070"))
+# Render 会注入 PORT;家里跑用 MCP_PORT 或默认 8070
+PORT = int(os.environ.get("PORT") or os.environ.get("MCP_PORT") or "8070")
 BJ = timezone(timedelta(hours=8))
 
 
@@ -146,6 +147,10 @@ async def bunny_search(keyword: str, limit: int = 20) -> str:
 # ── 门禁 + 启动(咱家标配)──────────────────────────────
 
 def _load_token() -> str:
+    # Render 等云端用环境变量 BUNNYLOG_TOKEN;家里跑写 token.txt 也行
+    env_token = os.environ.get("BUNNYLOG_TOKEN", "").strip()
+    if env_token:
+        return env_token
     f = BASE_DIR / "token.txt"
     return f.read_text(encoding="utf-8").strip() if f.exists() else ""
 
