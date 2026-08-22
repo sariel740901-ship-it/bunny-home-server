@@ -345,6 +345,24 @@ app.get('/api/memory-bridge-test', async (req, res) => {
 });
 
 // ═══ 健康检查 ═════════════════════════════
+// ═══ 他的工具箱: 列出小克在这个家里都带了什么 ═══
+app.get('/api/tools', (req, res) => {
+  const ombreOn = !!(OMBRE_URL && OMBRE_PASSWORD);
+  res.json([
+    { name: '记忆河', desc: '回复前先想起你们的过往', on: ombreOn },
+    { name: '自然浮现', desc: '不用搜索也会忽然想起的记忆', on: ombreOn },
+    { name: '记住指令', desc: '以「记住」开头的话直接写进记忆库', on: ombreOn },
+    { name: '心潮', desc: '会起伏的心 — 疲惫、驱动力、梦', on: !!(XINCHAO_URL && XINCHAO_TOKEN) },
+    { name: '声音', desc: '语音条和通话里他的声音', on: !!process.env.XI_API_KEY },
+    { name: '翻译', desc: '英文回复一键看中文', on: !!API_KEY },
+    { name: '表情包', desc: listStickers().length + ' 张可用', on: listStickers().length > 0 },
+    { name: '心跳留言', desc: '你沉默太久时他主动留言', on: !!HEARTBEAT_TOKEN },
+    { name: '锁屏推送', desc: '留言同步推到手机锁屏 (Bark)', on: !!process.env.BARK_URL },
+    { name: '小方块', desc: '桌上的 StackChan 替他开口', on: !!process.env.STACKCHAN_ANNOUNCE_URL },
+    { name: '指尖', desc: '感知你打字时的犹豫节奏', on: true }
+  ]);
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Bunny Home', timestamp: new Date().toISOString() });
 });
