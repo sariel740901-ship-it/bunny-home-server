@@ -26,8 +26,11 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .hide{display:none !important}
 
 /* ═══ 封面(微信式): 星空底 + 右下头像和名字, 右上角相机发布 ═══ */
-.cover{position:relative;height:200px;background:radial-gradient(130% 170% at 18% 0%,#2b2844 0%,#1c1a2b 55%,#14131c 100%);overflow:visible;margin-bottom:38px}
+.cover{position:relative;height:200px;background:radial-gradient(130% 170% at 18% 0%,#2b2844 0%,#1c1a2b 55%,#14131c 100%);background-size:cover;background-position:center;overflow:visible;margin-bottom:38px;cursor:pointer}
 .cover canvas{position:absolute;inset:0;width:100%;height:100%}
+.cover.custom canvas{display:none}
+.cover.custom::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.18),transparent 40%,rgba(0,0,0,.28));pointer-events:none}
+.coverHint{position:absolute;left:12px;bottom:8px;font-size:10.5px;color:rgba(255,255,255,.5);letter-spacing:.5px;pointer-events:none}
 .cam{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px;background:none;border:none;padding:8px;cursor:pointer;color:rgba(255,255,255,.88)}
 .cam svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .who{position:absolute;right:14px;bottom:-26px;display:flex;align-items:center;gap:12px}
@@ -108,14 +111,16 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 </style>
 </head>
 <body>
-<!-- 封面 -->
-<div class="cover">
+<!-- 封面(点封面本身可以换成自己的图) -->
+<div class="cover" id="cover" onclick="pickCover(event)">
   <canvas id="coverStars"></canvas>
-  <button class="cam" onclick="openSheet()" aria-label="发动态">
+  <div class="coverHint" id="coverHint">点封面换背景</div>
+  <button class="cam" onclick="event.stopPropagation();openSheet()" aria-label="发动态">
     <svg viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.4"/></svg>
   </button>
-  <div class="who"><span class="wname">嘉嘉</span><div class="wav" id="myAv">🌸</div></div>
+  <div class="who" onclick="event.stopPropagation()"><span class="wname">嘉嘉</span><div class="wav" id="myAv">🌸</div></div>
 </div>
+<input type="file" id="coverInp" accept="image/*" style="display:none">
 
 <div class="feed" id="feed"><div class="emptyf">还没有动态,点右上角的相机发第一条</div></div>
 <button class="more hide" id="moreBtn" onclick="loadMore()">看更早的</button>
@@ -187,6 +192,24 @@ function avatarUrl(author){
   const u=avatarUrl('her');
   if(u){const el=document.getElementById('myAv');el.style.backgroundImage="url('"+u+"')";el.textContent=''}
 })();
+
+// 自定义封面: 点封面换图,存在这台设备的浏览器里
+function applyCover(){
+  let c='';try{c=localStorage.getItem('bunny_cover_v1')||''}catch(e){}
+  const el=document.getElementById('cover');
+  if(c){el.style.backgroundImage="url('"+c+"')";el.classList.add('custom');document.getElementById('coverHint').style.display='none'}
+}
+applyCover();
+function pickCover(e){document.getElementById('coverInp').click()}
+document.getElementById('coverInp').onchange=async e=>{
+  const f=e.target.files&&e.target.files[0];
+  e.target.value='';
+  if(!f)return;
+  const url=await compress(f);
+  if(!url)return;
+  try{localStorage.setItem('bunny_cover_v1',url)}catch(err){alert('图太大存不下,换张小点的试试')}
+  applyCover();
+};
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
 function ftime(t){
   const d=new Date(t),diff=(Date.now()-d.getTime())/6e4;
