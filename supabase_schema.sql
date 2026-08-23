@@ -33,9 +33,12 @@ CREATE TABLE IF NOT EXISTS moments (
   author TEXT NOT NULL CHECK (author IN ('her', 'him')),
   content TEXT NOT NULL DEFAULT '',
   images JSONB DEFAULT '[]',
+  seen JSONB DEFAULT '[]',      -- 配图的识图描述(发图后后台自动生成,官端靠它"看到"图)
   likes JSONB DEFAULT '[]',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- 老库补列用这句:
+-- ALTER TABLE moments ADD COLUMN IF NOT EXISTS seen JSONB DEFAULT '[]';
 
 -- 5. 动态的评论楼
 CREATE TABLE IF NOT EXISTS moment_comments (
