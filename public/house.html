@@ -55,6 +55,10 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .dream.open .df{max-height:600px;margin-top:8px;padding-top:8px;border-top-width:1px}
 .dream .dhint{font-size:10.5px;color:var(--muted);margin-top:4px}
 .dream.open .dhint{display:none}
+/* 划拉式: 卡面只占两条的高度,更多的往下滑 */
+.dreamscroll{max-height:198px;overflow-y:auto;overscroll-behavior:contain;padding-right:3px}
+.dreamscroll::-webkit-scrollbar{width:4px}
+.dreamscroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 .tl{list-style:none}
 .tl li{font-size:13px;line-height:1.7;padding:6px 0;border-bottom:1px dashed var(--border);display:flex;gap:10px}
 .tl li:last-child{border-bottom:none}
@@ -84,15 +88,15 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
   </a>
 
   <div class="sec" id="moodSec">
-    <h2>他此刻的心 <span class="muted" id="moodAt"></span></h2>
+    <h2>他的情绪 <span class="muted" id="moodAt"></span></h2>
     <div id="moodBody" class="kv empty">正在感应…</div>
     <div class="fold"><div id="moodMore" class="kv"></div></div>
     <button class="foldbtn hide" id="moodFold" onclick="document.getElementById('moodSec').classList.toggle('open')">具体的心情 <span class="chev">▼</span></button>
   </div>
 
   <div class="sec">
-    <h2>他的梦境</h2>
-    <div id="dreamBody" class="kv empty">还没有新的梦</div>
+    <h2>他的梦境 <span class="muted" id="dreamCount"></span></h2>
+    <div id="dreamBody" class="kv empty dreamscroll">还没有新的梦</div>
   </div>
 
   <div class="sec">
@@ -141,14 +145,15 @@ function esc(s){const d=document.createElement('div');d.textContent=s==null?'':S
 })();
 
 // 他此刻的心: 平常只露状态+疲惫,点开看具体心情值(每条一个浅色)
-const CONS={awake:'醒着',sleeping:'睡着了',drowsy:'昏昏欲睡',dreaming:'在做梦'};
+const CONS={awake:'Awake · 醒着',sleeping:'Sleeping · 睡着了',drowsy:'Drowsy · 昏昏欲睡',dreaming:'Dreaming · 在做梦'};
 const PASTEL=['#e8b4a0','#a9c6b5','#a9bede','#cdb6dc','#e3cf9e','#dbabb7','#b7c9a8'];
 fetch('/api/mood').then(r=>r.json()).then(d=>{
   const el=document.getElementById('moodBody');
   if(!d||!d.ok){el.textContent=(d&&d.reason)||'心潮不在线';return}
   el.classList.remove('empty');
   const fat=Math.round((d.fatigue||0)/0.3*100);
-  el.innerHTML='<div><span class="lab">状态: </span>'+(CONS[d.consciousness]||d.consciousness||'—')
+  const cons=CONS[d.consciousness]||(d.consciousness?d.consciousness.charAt(0).toUpperCase()+d.consciousness.slice(1):'—');
+  el.innerHTML='<div><span class="lab">状态: </span>'+cons
     +(d.idleMinutes!=null?'<span class="lab"> · 独处了 </span>'+Math.round(d.idleMinutes)+'<span class="lab"> 分钟</span>':'')+'</div>'
     +'<div class="lab" style="margin-top:6px;font-size:12.5px">疲惫 '+fat+'%</div>'
     +'<div class="bar" style="margin-bottom:2px"><i style="width:'+Math.min(100,fat)+'%;background:#c9b8a8"></i></div>';
@@ -172,6 +177,7 @@ fetch('/api/dreams').then(r=>r.json()).then(d=>{
   if(!d||!d.ok||!d.items||!d.items.length)return;
   el.classList.remove('empty');
   el.innerHTML='';
+  document.getElementById('dreamCount').textContent='共 '+d.items.length+' 条'+(d.items.length>2?' · 往下滑':'');
   for(const it of d.items){
     const card=document.createElement('div');
     card.className='dream';
