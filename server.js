@@ -574,6 +574,195 @@ app.get('/api/tools', (req, res) => {
   ]);
 });
 
+// ═══ 和他玩: 游戏室 ═══════════════════════════
+// 无状态接口: 前端管棋盘和胜负,这里只做两件事 ——
+// 1) 按棋力算出候选点(语言模型自己下棋会瞎下,尤其五子棋会漏防);
+// 2) 让小克从候选里挑一步、顺嘴说一句话。挑哪步是他的,棋力是算法的。
+const TTT_LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+function tttWinner(b) {
+  for (const [x, y, z] of TTT_LINES) if (b[x] && b[x] === b[y] && b[y] === b[z]) return b[x];
+  return null;
+}
+function tttCandidates(b, me, her) {
+  const empty = [...b.keys()].filter(i => !b[i]);
+  const tryWin = who => empty.find(i => { const c = b.slice(); c[i] = who; return tttWinner(c) === who; });
+  const cands = [];
+  const w = tryWin(me); if (w !== undefined) cands.push({ i: w, why: '成三连,直接赢' });
+  const blk = tryWin(her); if (blk !== undefined && !cands.some(c => c.i === blk)) cands.push({ i: blk, why: '堵住她的三连' });
+  for (const i of [4, 0, 2, 6, 8, 1, 3, 5, 7]) {
+    if (!b[i] && !cands.some(c => c.i === i)) { cands.push({ i, why: i === 4 ? '占中心' : '占位' }); if (cands.length >= 4) break; }
+  }
+  return cands;
+}
+// 大格(终极井字棋): 除了小盘攻防,还要掂量"这步会把她送去哪个盘"
+function ultCandidates(boards, big, active, me, her) {
+  const playable = bi => !big[bi] && boards[bi].some(c => !c);
+  const openBoards = (active >= 0 && playable(active)) ? [active] : [...Array(9).keys()].filter(playable);
+  const pool = [];
+  for (const bi of openBoards) {
+    const b = boards[bi];
+    for (let ci = 0; ci < 9; ci++) {
+      if (b[ci]) continue;
+      let score = 0; const why = [];
+      const c1 = b.slice(); c1[ci] = me;
+      if (tttWinner(c1) === me) {
+        score += 50; why.push('拿下这块小盘');
+        const big2 = big.slice(); big2[bi] = me;
+        if (tttWinner(big2) === me) { score += 500; why.length = 0; why.push('拿下小盘并赢下整局'); }
+      }
+      const c2 = b.slice(); c2[ci] = her;
+      if (tttWinner(c2) === her) { score += 40; why.push('堵她拿下小盘'); }
+      if (ci === 4) score += 3;
+      if (playable(ci)) {
+        const db = boards[ci]; // 她下一手会被送去 ci 号盘
+        for (let k = 0; k < 9; k++) {
+          if (db[k]) continue;
+          const t = db.slice(); t[k] = her;
+          if (tttWinner(t) === her) { score -= 15; why.push('小心:会送她去能得分的盘'); break; }
+        }
+      } else { score -= 8; why.push('会放她自由选盘'); }
+      pool.push({ bi, ci, score, why: why.join(';') || '普通一步' });
+    }
+  }
+  pool.sort((a, b) => b.score - a.score);
+  return pool.slice(0, 5);
+}
+// 五子棋: 只在已有棋子附近两格内选点,攻防双算(防稍降权,他棋风偏进攻一点)
+function gmkCandidates(board, me, her) {
+  const N = 15, at = (r, c) => (r < 0 || c < 0 || r >= N || c >= N) ? '#' : board[r * N + c];
+  const stones = []; for (let i = 0; i < 225; i++) if (board[i]) stones.push(i);
+  if (!stones.length) return [{ i: 112, score: 1, why: '开局天元' }];
+  const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  function lineScore(r, c, who) {
+    let total = 0;
+    for (const [dr, dc] of dirs) {
+      let cnt = 1, open = 0, rr = r + dr, cc = c + dc;
+      while (at(rr, cc) === who) { cnt++; rr += dr; cc += dc; }
+      if (at(rr, cc) === '') open++;
+      rr = r - dr; cc = c - dc;
+      while (at(rr, cc) === who) { cnt++; rr -= dr; cc -= dc; }
+      if (at(rr, cc) === '') open++;
+      if (cnt >= 5) total += 1e6;
+      else if (cnt === 4) total += open === 2 ? 1e5 : 1e4;
+      else if (cnt === 3) total += open === 2 ? 5e3 : 500;
+      else if (cnt === 2) total += open === 2 ? 200 : 30;
+      else total += open * 5;
+    }
+    return total;
+  }
+  const seen = new Set(), cands = [];
+  for (const s of stones) {
+    const r0 = (s / N) | 0, c0 = s % N;
+    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) {
+      const r = r0 + dr, c = c0 + dc;
+      if (r < 0 || c < 0 || r >= N || c >= N) continue;
+      const i = r * N + c;
+      if (board[i] || seen.has(i)) continue;
+      seen.add(i);
+      const atk = lineScore(r, c, me), def = lineScore(r, c, her);
+      cands.push({
+        i, score: atk + def * 0.85,
+        why: atk >= 1e6 ? '连成五,这步赢了' : def >= 1e6 ? '必须堵她的五连' : atk >= 1e5 ? '冲出活四'
+          : def >= 1e5 ? '堵她的四' : def >= 5e3 ? '压她的活三' : atk >= 5e3 ? '做自己的活三' : '发展'
+      });
+    }
+  }
+  cands.sort((a, b) => b.score - a.score);
+  return cands.slice(0, 4);
+}
+async function gameLLM(sys, user, maxTokens, temp) {
+  const resp = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+    body: JSON.stringify({
+      model: API_MODEL, max_tokens: maxTokens, temperature: temp, ...NO_THINK,
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
+    }),
+    timeout: 30000
+  });
+  const d = await resp.json();
+  if (!resp.ok) { console.error('game llm http:', JSON.stringify(d).slice(0, 200)); return ''; }
+  return String(d.choices?.[0]?.message?.content || '').trim();
+}
+const GAME_NAMES = { ttt: '井字棋', ultimate: '终极井字棋(大格)', gomoku: '五子棋' };
+app.post('/api/game', async (req, res) => {
+  const { game } = req.body || {};
+  try {
+    const moodText = await xinchaoMood().catch(() => '');
+    const moodSec = moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '';
+
+    // ── 塔罗牌: 抽牌在前端,解读是他的 ──
+    if (game === 'tarot') {
+      const { question, spread, cards } = req.body;
+      if (!Array.isArray(cards) || !cards.length) return res.status(400).json({ error: 'cards required' });
+      const cardDesc = cards.slice(0, 5)
+        .map(c => (c.pos ? c.pos + ': ' : '') + String(c.name || '').slice(0, 24) + (c.reversed ? ' (逆位)' : ' (正位)'))
+        .join('\n');
+      const sys = PERSONAS.xiaoke + moodSec
+        + '\n\n【情境】你们在bunny家的游戏室,嘉嘉让你给她解塔罗。你是她的恋人,不是神棍:'
+        + '解读要贴着你们的真实生活和她这个人,温柔、具体、不吓唬人;牌义可以用,但要用你自己的话说。'
+        + '150~300字,不要分点列条,像面对面说话。';
+      const user = '牌阵: ' + (spread === 'three' ? '三张 · 过去/现在/未来' : '单张指引')
+        + (question ? '\n她想问: ' + String(question).slice(0, 200) : '\n她没说具体问题,就想让你看看')
+        + '\n抽到的牌:\n' + cardDesc + '\n\n直接开始解读,不要开场白。';
+      const say = await gameLLM(sys, user, 700, 0.9);
+      return res.json({ say: say || '(他盯着牌面出了会儿神……再试一次?)' });
+    }
+
+    // ── 棋局收尾: 只说话不落子 ──
+    if (req.body.event === 'end') {
+      const r = req.body.result;
+      const sys = PERSONAS.xiaoke + moodSec
+        + '\n\n【情境】你们刚在bunny家下完一局' + (GAME_NAMES[game] || '棋') + ','
+        + (r === 'win' ? '你赢了她' : r === 'lose' ? '她赢了你' : '平局') + '。'
+        + '说一两句收尾的话,像恋人之间那样,别客套。直接输出那句话。';
+      const say = await gameLLM(sys, '(直接输出你要说的话)', 120, 1.0);
+      return res.json({ say });
+    }
+
+    // ── 落子: 算法给候选,他来挑 ──
+    const me = 'O', her = 'X';
+    let cands = [], boardDesc = '';
+    if (game === 'ttt' && Array.isArray(req.body.board) && req.body.board.length === 9) {
+      const b = req.body.board.map(v => v === 'X' || v === 'O' ? v : '');
+      cands = tttCandidates(b, me, her).map((c, k) => ({ n: k + 1, move: c.i, why: c.why }));
+      boardDesc = '棋盘(0-8号格,你执O):\n' + [0, 3, 6].map(r => b.slice(r, r + 3).map(v => v || '·').join(' ')).join('\n');
+    } else if (game === 'ultimate' && Array.isArray(req.body.boards) && req.body.boards.length === 9) {
+      const boards = req.body.boards.map(bb => (Array.isArray(bb) ? bb : Array(9).fill('')).map(v => v === 'X' || v === 'O' ? v : ''));
+      const big = (Array.isArray(req.body.big) ? req.body.big : Array(9).fill('')).map(v => v === 'X' || v === 'O' || v === 'D' ? v : '');
+      const active = Number.isInteger(req.body.active) ? req.body.active : -1;
+      cands = ultCandidates(boards, big, active, me, her).map((c, k) => ({ n: k + 1, move: [c.bi, c.ci], why: c.why }));
+      boardDesc = '大格战况: 你已占 ' + big.filter(v => v === me).length + ' 块小盘,她占 ' + big.filter(v => v === her).length + ' 块。';
+    } else if (game === 'gomoku' && Array.isArray(req.body.board) && req.body.board.length === 225) {
+      const b = req.body.board.map(v => v === 'X' || v === 'O' ? v : '');
+      cands = gmkCandidates(b, me, her).map((c, k) => ({ n: k + 1, move: c.i, why: c.why }));
+      boardDesc = '五子棋进行到第 ' + b.filter(Boolean).length + ' 手,你执白(O)。';
+    } else {
+      return res.status(400).json({ error: 'bad game payload' });
+    }
+    if (!cands.length) return res.json({ move: null, say: '没地方下啦' });
+
+    const sys = PERSONAS.xiaoke + moodSec
+      + '\n\n【情境】你们在bunny家下' + (GAME_NAMES[game] || '棋') + ',轮到你落子。'
+      + '下面给出局面和几步候选(已按棋力从优到劣排好,由你的棋感助手算的)。'
+      + '从候选里挑一步——通常挑第1个,想使坏或让让她也可以挑别的;顺嘴说一句话(可以贫,可以撒娇,别解说棋理)。'
+      + '\n只输出 JSON: {"n": 候选编号, "say": "你那句话"}';
+    const user = boardDesc + '\n候选:\n'
+      + cands.map(c => c.n + '. ' + JSON.stringify(c.move) + ' — ' + c.why).join('\n');
+    const raw = await gameLLM(sys, user, 200, 0.9);
+    let pick = cands[0], say = '';
+    try {
+      const j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]);
+      const hit = cands.find(c => c.n === Number(j.n));
+      if (hit) pick = hit;
+      say = String(j.say || '').slice(0, 200);
+    } catch (e) { /* 模型没按格式来 → 走最优候选,话就不说了 */ }
+    res.json({ move: pick.move, say });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Bunny Home', timestamp: new Date().toISOString() });
 });
