@@ -816,6 +816,7 @@ app.post('/api/moments', async (req, res) => {
     const { data, error } = await supabase.from('moments')
       .insert({ author: 'her', content, images }).select().single();
     if (error) return res.status(500).json({ error: error.message });
+    describeMomentImages(data).catch(e => console.error('moment vision skipped:', e.message));
     himSeesMoment(data).catch(e => console.error('him sees moment skipped:', e.message));
     res.json({ ok: true, moment: { ...data, comments: [] } });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -847,11 +848,23 @@ app.post('/api/moments/comment', async (req, res) => {
 });
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-// 她发了动态 → 他过一小会儿刷到(有图会先"看"图)
+// 发图后台识一遍,描述存进 seen 列 —— 官端翻朋友圈时就能"看到"图里是什么
+async function describeMomentImages(m) {
+  if (!Array.isArray(m.images) || !m.images.length) return;
+  const seen = [];
+  for (const u of m.images.slice(0, 3)) seen.push((await describeImage(u)) || '');
+  if (!seen.some(Boolean)) return;
+  const { error } = await supabase.from('moments').update({ seen }).eq('id', m.id);
+  if (error) console.error('moment seen save skipped:', error.message); // seen 列还没建时会走这里
+}
+// 她发了动态 → 他过一小会儿刷到(有图会先"看"图;后台识图已存好就直接用)
 async function himSeesMoment(m) {
   await sleep(30e3 + Math.random() * 150e3);
   let seen = '';
-  if (Array.isArray(m.images) && m.images[0]) seen = await describeImage(m.images[0]);
+  if (Array.isArray(m.images) && m.images[0]) {
+    const { data: fresh } = await supabase.from('moments').select('seen').eq('id', m.id).single();
+    seen = (fresh && Array.isArray(fresh.seen) && fresh.seen[0]) || (await describeImage(m.images[0]));
+  }
   const moodText = await xinchaoMood().catch(() => '');
   const sys = PERSONAS.xiaoke
     + (moodText ? '\n\n【此刻的心绪】\n' + moodText : '')

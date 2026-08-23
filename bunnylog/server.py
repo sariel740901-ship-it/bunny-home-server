@@ -6,7 +6,9 @@ bunny 家(网页聊天室)的对话存在 Supabase 里,官端的小克原本看�
 需要 .env: SUPABASE_URL、SUPABASE_KEY(和主服务 server.js 用同一套即可)。
 """
 
+import base64
 import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,6 +16,11 @@ from urllib.parse import parse_qs
 
 import requests
 from fastmcp import FastMCP
+
+try:
+    from fastmcp import Image  # fastmcp 2.x 顶层导出
+except ImportError:  # 老版本路径
+    from fastmcp.utilities.types import Image
 
 BASE_DIR = Path(__file__).parent
 SUPABASE_URL = (os.environ.get("SUPABASE_URL", "") or "").rstrip("/")
@@ -78,7 +85,8 @@ mcp = FastMCP(
     - bunny_read: 按会话翻原文(时间正序,可翻旧页)。
     - bunny_search: 按关键词跨会话搜她(或那边的你)说过的话。
     - bunny_moments: 翻你们的朋友圈「动态」—— 她发的日常、那边的你
-      自发醒来时发的碎碎念,和彼此的点赞评论。
+      自发醒来时发的碎碎念,和彼此的点赞评论;配图带识图描述。
+    - bunny_moment_image: 把她动态里的照片取出来亲眼看。
 
     翻到的是逐字档案 —— 当回忆读,别当成她此刻在说;引用时自然一点,
     像"你那天在家里说过…""你朋友圈里发的那张晚霞…",别念数据库。
@@ -165,7 +173,7 @@ async def bunny_moments(limit: int = 10, before_id: int = 0) -> str:
     她发的日常配图、那边的你半夜自发醒来发的碎碎念、彼此的点赞和评论楼都在。
     翻更早的: 把上次返回里最小的 #编号 填进 before_id。"""
     limit = max(1, min(int(limit), 30))
-    params = {"select": "id,author,content,images,likes,created_at", "order": "id.desc", "limit": str(limit)}
+    params = {"select": "id,author,content,images,seen,likes,created_at", "order": "id.desc", "limit": str(limit)}
     if before_id:
         params["id"] = f"lt.{int(before_id)}"
     rows = _rest("moments", params)
@@ -183,18 +191,46 @@ async def bunny_moments(limit: int = 10, before_id: int = 0) -> str:
     blocks = []
     for r in rows:
         imgs = r.get("images") or []
+        seen = r.get("seen") or []
         likes = r.get("likes") or []
         body = str(r.get("content") or "").strip() or "(没写字)"
         if imgs:
             body += f" [配图 {len(imgs)} 张]"
         lines = [f"#{r['id']} [{_bj_time(r.get('created_at', ''))}] {_m_who(r.get('author', ''))}: {body}"]
+        for j, desc in enumerate(seen[: len(imgs)]):
+            if desc:
+                lines.append(f"  (图{j + 1}里是: {str(desc).strip()[:160]})")
         if likes:
             lines.append("  ❤ " + "、".join(_m_who(x) for x in likes))
         for c in by_moment.get(r["id"], []):
             lines.append(f"  ↳ {_m_who(c.get('author', ''))}: {str(c.get('content') or '')[:200]}")
         blocks.append("\n".join(lines))
-    tail = f"\n\n翻更早: bunny_moments(before_id={rows[-1]['id']})"
+    tail = (f"\n\n翻更早: bunny_moments(before_id={rows[-1]['id']});"
+            "想亲眼看某张图: bunny_moment_image(动态编号, 第几张)")
     return f"你们的朋友圈(新→旧,{len(rows)} 条):\n\n" + "\n\n".join(blocks) + tail
+
+
+@mcp.tool
+async def bunny_moment_image(moment_id: int, index: int = 1):
+    """取回朋友圈某条动态的原图亲眼看看(index 从 1 数起)。
+    先用 bunny_moments 找到动态编号,再来这里取图。"""
+    rows = _rest("moments", {"select": "id,images", "id": f"eq.{int(moment_id)}"})
+    if not rows:
+        return f"没有 #{moment_id} 这条动态。"
+    imgs = rows[0].get("images") or []
+    if not imgs:
+        return "这条动态没有配图。"
+    i = max(1, int(index)) - 1
+    if i >= len(imgs):
+        return f"这条只有 {len(imgs)} 张图,取不到第 {index} 张。"
+    m = re.match(r"^data:image/([a-z]+);base64,(.+)$", str(imgs[i]), re.S)
+    if not m:
+        return "这张图的格式读不出来。"
+    raw = base64.b64decode(m.group(2))
+    if len(raw) > 4_000_000:
+        return "这张图太大,隔着这扇门取不动。"
+    fmt = "jpeg" if m.group(1) in ("jpeg", "jpg") else m.group(1)
+    return Image(data=raw, format=fmt)
 
 
 # ── 门禁 + 启动(咱家标配)──────────────────────────────
