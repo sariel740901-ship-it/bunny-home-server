@@ -879,9 +879,29 @@ async function himRepliesInThread(momentId) {
   await supabase.from('moment_comments').insert({ moment_id: momentId, author: 'him', content: reply.slice(0, 300) });
 }
 
-// 小屋: 他最近的梦(全文,来自心潮)
+// 小屋: 他的梦境 —— 余韵做门面,完整梦境点开才看
+let dreamItemsCache = { data: null, at: 0 };
 app.get('/api/dreams', async (req, res) => {
-  res.json({ ok: true, text: await xinchaoDreams() });
+  if (!XINCHAO_URL || !XINCHAO_TOKEN) return res.json({ ok: false, items: [] });
+  if (dreamItemsCache.data && Date.now() - dreamItemsCache.at < 10 * 60e3) return res.json(dreamItemsCache.data);
+  try {
+    const resp = await fetch(XINCHAO_URL + '/v1/state',
+      { headers: { Authorization: 'Bearer ' + XINCHAO_TOKEN }, timeout: 6000 });
+    if (!resp.ok) return res.json({ ok: false, items: [] });
+    const d = await resp.json();
+    const items = (d.recentDreams || []).slice(-6).reverse().map(x => {
+      const full = String(x.dream || '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+      const residue = String(x.residue || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+      return {
+        when: String(x.createdAt || '').replace('T', ' ').slice(5, 16),
+        gist: residue || (full ? full.slice(0, 60) + (full.length > 60 ? '…' : '') : ''),
+        full: full || residue
+      };
+    }).filter(x => x.gist);
+    const data = { ok: true, items };
+    dreamItemsCache = { data, at: Date.now() };
+    res.json(data);
+  } catch (e) { res.json({ ok: false, items: [] }); }
 });
 
 app.get('/health', (req, res) => {

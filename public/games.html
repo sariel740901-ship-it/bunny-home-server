@@ -23,9 +23,9 @@
   --shadow:0 1px 2px rgba(0,0,0,.25),0 3px 10px rgba(0,0,0,.25)
 }}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
 .topbar{position:sticky;top:0;z-index:5;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:8px}
-.topbar h1{font-family:var(--serif);font-size:17px;font-weight:600;flex:1;text-align:center}
+.topbar h1{font-family:var(--serif);font-size:17px;font-weight:500;letter-spacing:.4px;flex:1;text-align:center}
 .txt-btn{padding:7px 12px;border-radius:10px;border:none;font-size:13.5px;cursor:pointer;background:transparent;color:var(--text);font-family:inherit;white-space:nowrap}
 .txt-btn:hover{background:var(--chip)}
 .txt-btn:active{transform:scale(.96)}
@@ -34,8 +34,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 /* 首页: 游戏卡片 */
 .gcard{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:18px 16px;margin-bottom:14px;cursor:pointer;display:flex;align-items:center;gap:14px;transition:transform .15s}
 .gcard:active{transform:scale(.98)}
-.gcard .gi{font-size:30px}
-.gcard .gt{font-family:var(--serif);font-size:16.5px;font-weight:600}
+.gcard svg.gi{width:30px;height:30px;flex-shrink:0;fill:none;stroke:var(--accent);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.85}
+.gcard .gt{font-family:var(--serif);font-size:16px;font-weight:500;letter-spacing:.3px}
 .gcard .gd{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.6}
 
 /* 他的话 */
@@ -96,8 +96,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 .hide{display:none !important}
 body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
-.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;text-decoration:none;color:var(--muted);font-size:10.5px;position:relative}
-.tabbar a .ti{font-size:20px;line-height:1.2}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--muted);font-size:10.5px;letter-spacing:.5px;position:relative}
+.tabbar a svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .tabbar a.on{color:var(--accent)}
 .tabbar a .dot{position:absolute;top:-1px;right:calc(50% - 16px);width:8px;height:8px;border-radius:50%;background:#e0524d;display:none}
 .tabbar a .dot.show{display:block}
@@ -113,9 +113,9 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 <div class="wrap">
   <!-- 首页 -->
   <div id="vHome">
-    <div class="gcard" onclick="go('tarot')"><div class="gi">🔮</div><div><div class="gt">塔罗牌</div><div class="gd">抽一把,让他给你解 —— 他会带着你们的日子说</div></div></div>
-    <div class="gcard" onclick="go('ttt')"><div class="gi">⭕</div><div><div class="gt">井字棋</div><div class="gd">经典 3×3,或九宫格套九宫格的大格玩法</div></div></div>
-    <div class="gcard" onclick="go('gomoku')"><div class="gi">⚫</div><div><div class="gt">五子棋</div><div class="gd">十五路棋盘,他有个帮他看棋的小脑袋,不好糊弄</div></div></div>
+    <div class="gcard" onclick="go('tarot')"><svg class="gi" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="17" rx="2"/><path d="M12 8l2.4 3.5L12 15l-2.4-3.5z"/></svg><div><div class="gt">塔罗牌</div><div class="gd">抽一把,让他给你解 —— 他会带着你们的日子说</div></div></div>
+    <div class="gcard" onclick="go('ttt')"><svg class="gi" viewBox="0 0 24 24"><path d="M9.2 4v16M14.8 4v16M4 9.2h16M4 14.8h16"/></svg><div><div class="gt">井字棋</div><div class="gd">经典 3×3,或九宫格套九宫格的大格玩法</div></div></div>
+    <div class="gcard" onclick="go('gomoku')"><svg class="gi" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.4"/><circle cx="15.5" cy="15.5" r="3.4" fill="currentColor" stroke="none"/></svg><div><div class="gt">五子棋</div><div class="gd">十五路棋盘,他有个帮他看棋的小脑袋,不好糊弄</div></div></div>
   </div>
 
   <!-- 井字棋(经典 + 大格) -->
@@ -157,10 +157,10 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 </div>
 
 <nav class="tabbar">
-  <a href="/"><span class="ti">💬</span>消息</a>
-  <a href="/moments.html"><span class="ti">🌱</span>动态<span class="dot" id="mdot"></span></a>
-  <a href="/house.html"><span class="ti">🏠</span>小屋</a>
-  <a class="on" href="/games.html"><span class="ti">🎮</span>游戏</a>
+  <a href="/"><svg viewBox="0 0 24 24"><path d="M21 7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1v4l5-4h8a2 2 0 0 0 2-2z"/></svg>消息</a>
+  <a href="/moments.html"><svg viewBox="0 0 24 24"><path d="M12 21v-8"/><path d="M12 13c0-4 3-6.5 7.5-6.5 0 4.5-3 6.5-7.5 6.5z"/><path d="M12 13c0-3-2.2-5-5.8-5 0 3.4 2.2 5 5.8 5z"/></svg>动态<span class="dot" id="mdot"></span></a>
+  <a href="/house.html"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 9.5V19h12V9.5"/><path d="M10 19v-5h4v5"/></svg>小屋</a>
+  <a class="on" href="/games.html"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="9" rx="4.5"/><path d="M8 10.8v3.4M6.3 12.5h3.4"/><path d="M15.6 11.3h.01M18 13.6h.01"/></svg>游戏</a>
 </nav>
 
 <script>
@@ -458,6 +458,19 @@ async function tarotRead(){
   box.textContent=(d&&d.say)||'(他盯着牌面出了会儿神……再抽一次?)';
   box.classList.remove('hide');
 }
+
+// 他的头像沿用聊天页的装扮
+(function(){
+  try{
+    const d=JSON.parse(localStorage.getItem('bunny_decor_v1')||'{}');
+    const v=String(d.kAv||'');
+    const url=v.startsWith('img:')?v.slice(4):(v.startsWith('data:')?v:'');
+    if(url)document.querySelectorAll('.him .av').forEach(el=>{
+      el.style.backgroundImage="url('"+url+"')";
+      el.style.backgroundSize='cover';el.style.backgroundPosition='center';el.textContent='';
+    });
+  }catch(e){}
+})();
 
 // 动态红点
 fetch('/api/moments?limit=1').then(r=>r.json()).then(d=>{
