@@ -43,6 +43,16 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 /* 下拉式: 平常只露状态和疲惫,点开才看具体心情值 */
 .foldbtn{width:100%;border:none;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;padding:4px 0 0;display:flex;align-items:center;justify-content:center;gap:5px}
 .foldbtn .chev{display:inline-block;transition:transform .25s;font-size:10px}
+/* 十二维花瓣图(搬自旧的心情面板) */
+.petal-wrap{display:flex;justify-content:center;padding:2px 0 6px}
+.petal-wrap svg{max-width:300px;width:100%;height:auto}
+.pl-grid{fill:none;stroke:var(--border);stroke-width:1}
+.pl-axis{stroke:var(--border);stroke-width:.6;opacity:.6}
+.pl-shape{fill:color-mix(in srgb,#e898a4 30%,transparent);stroke:#d97f8e;stroke-width:1.6;stroke-linejoin:round}
+.pl-dot{fill:#d97f8e}
+.pl-label{font-size:9.5px;fill:var(--muted)}
+.pl-label.hot{fill:#d97f8e;font-weight:600}
+.thoughts{font-size:12.5px;color:var(--muted);padding-top:2px}
 .fold{max-height:0;overflow:hidden;transition:max-height .35s ease}
 .open .fold{max-height:420px}
 .open .foldbtn .chev{transform:rotate(180deg)}
@@ -153,6 +163,23 @@ function driveLabel(dr){
   if(dr.key)return cap(dr.key)+' · '+(DRIVE_ZH[dr.key]||String(dr.label||dr.name||'').split(/[、,，]/)[0]||dr.key);
   return String(dr.name||dr.label||'');
 }
+function shortLabel(dr){return dr.key&&DRIVE_ZH[dr.key]?DRIVE_ZH[dr.key]:String(dr.label||dr.name||'').split(/[、,，]/)[0].slice(0,6)}
+function petalSVG(drives){
+  const C=160,R=104,n=drives.length||12;
+  const pt=(i,r)=>{const a=-Math.PI/2+i*2*Math.PI/n;return[(C+r*Math.cos(a)).toFixed(1),(C+r*Math.sin(a)).toFixed(1)]};
+  let s='<svg viewBox="0 0 320 320">';
+  for(const g of[.25,.5,.75,1])s+='<circle class="pl-grid" cx="'+C+'" cy="'+C+'" r="'+(R*g).toFixed(1)+'"/>';
+  for(let i=0;i<n;i++){const[x,y]=pt(i,R);s+='<line class="pl-axis" x1="'+C+'" y1="'+C+'" x2="'+x+'" y2="'+y+'"/>';}
+  const pts=drives.map((d,i)=>pt(i,10+Math.max(0,Math.min(1,d.value))*(R-10)));
+  s+='<polygon class="pl-shape" points="'+pts.map(p=>p.join(',')).join(' ')+'"/>';
+  pts.forEach(p=>{s+='<circle class="pl-dot" cx="'+p[0]+'" cy="'+p[1]+'" r="2.6"/>';});
+  drives.forEach((d,i)=>{
+    const[a,b]=pt(i,R+13);
+    const anchor=Math.abs(a-C)<20?'middle':(a>C?'start':'end');
+    s+='<text class="pl-label'+(d.value>=.5?' hot':'')+'" x="'+a+'" y="'+b+'" text-anchor="'+anchor+'" dominant-baseline="middle">'+shortLabel(d)+'</text>';
+  });
+  return s+'</svg>';
+}
 const PASTEL=['#e8b4a0','#a9c6b5','#a9bede','#cdb6dc','#e3cf9e','#dbabb7','#b7c9a8'];
 fetch('/api/mood').then(r=>r.json()).then(d=>{
   const el=document.getElementById('moodBody');
@@ -163,14 +190,19 @@ fetch('/api/mood').then(r=>r.json()).then(d=>{
     +(d.idleMinutes!=null?'<span class="lab"> · 独处了 </span>'+Math.round(d.idleMinutes)+'<span class="lab"> 分钟</span>':'')+'</div>'
     +'<div class="lab" style="margin-top:6px;font-size:12.5px">疲惫 '+fat+'%</div>'
     +'<div class="bar" style="margin-bottom:2px"><i style="width:'+Math.min(100,fat)+'%;background:#c9b8a8"></i></div>';
-  const drives=(d.topDrives&&d.topDrives.length?d.topDrives:(d.drives||[])).slice(0,6);
-  if(drives.length){
+  const tops=(d.topDrives&&d.topDrives.length?d.topDrives:(d.drives||[])).slice(0,6);
+  const all=(d.drives&&d.drives.length?d.drives:tops);
+  if(tops.length){
     let html='';
-    drives.forEach((dr,i)=>{
+    if(all.length>=6)html+='<div class="petal-wrap">'+petalSVG(all)+'</div>';
+    tops.forEach((dr,i)=>{
       const v=Math.round(((dr.value??dr.intensity??dr.level)||0)*100);
       html+='<div class="drive"><div class="dl"><b>'+esc(driveLabel(dr))+'</b><span>'+v+'%</span></div>'
         +'<div class="bar"><i style="width:'+Math.min(100,v)+'%;background:'+PASTEL[i%PASTEL.length]+'"></i></div></div>';
     });
+    const th=d.thoughts||{};
+    if(th.flashCount!=null||th.obsessionCount!=null)
+      html+='<div class="thoughts">念头: 闪念 '+(th.flashCount||0)+' 个 · 执念 '+(th.obsessionCount||0)+' 个</div>';
     document.getElementById('moodMore').innerHTML=html;
     document.getElementById('moodFold').classList.remove('hide');
   }
