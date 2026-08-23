@@ -574,13 +574,6 @@ app.get('/api/memories', async (req, res) => {
   res.json(data || []);
 });
 
-// ═══ 设置 ═════════════════════════════════
-app.get('/api/settings', async (req, res) => {
-  const { data, error } = await supabase.from('settings').select('*').limit(1).single();
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data || { system_prompt: '' });
-});
-
 // ═══ 核心对话 ═════════════════════════════
 // 上下文预算(token): 历史从最新往回装,装满为止。默认 30k ≈ 两万多汉字。
 const CONTEXT_BUDGET_TOKENS = Math.max(2000, parseInt(process.env.CONTEXT_BUDGET_TOKENS || '30000', 10) || 30000);
