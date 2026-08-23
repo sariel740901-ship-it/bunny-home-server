@@ -76,6 +76,12 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 /* 五子棋 */
 #gmkC{display:block;margin:0 auto;border-radius:14px;box-shadow:var(--shadow);touch-action:manipulation}
 
+/* 你的消息: 右上角浮几秒(带你的头像) */
+.mecard{position:fixed;top:54px;right:10px;z-index:9;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:7px 11px;max-width:72%;opacity:0;transform:translateY(-6px);transition:opacity .25s,transform .25s;pointer-events:none}
+.mecard.show{opacity:1;transform:none}
+.mecard .mav2{width:26px;height:26px;border-radius:7px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:15px;background-size:cover;background-position:center;flex-shrink:0}
+.mecard .metext{font-size:13px;line-height:1.5;word-break:break-word}
+
 /* 棋盘边聊天 */
 .chatrow{display:flex;gap:8px;margin-top:10px}
 .chatrow input{flex:1;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;outline:none}
@@ -84,27 +90,24 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 /* 塔罗 */
 .tq{width:100%;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:10px 12px;font-size:14px;font-family:inherit;resize:none;margin-bottom:10px}
 .tq:focus{outline:none;border-color:var(--accent)}
-.tcards{display:flex;gap:14px;justify-content:center;margin:20px 0 6px;perspective:900px}
-.tcard{width:100px;height:168px;position:relative;cursor:pointer}
+.tcards{display:flex;gap:13px;justify-content:center;margin:20px 0 6px}
+.tcard{width:102px;cursor:pointer}
+.flipwrap{position:relative;height:180px;perspective:900px}
 .tcard .in{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.2,.7,.3,1)}
 .tcard.flip .in{transform:rotateY(180deg)}
-.tface{position:absolute;inset:0;border-radius:12px;backface-visibility:hidden;-webkit-backface-visibility:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;box-shadow:var(--shadow)}
+.tface{position:absolute;inset:0;border-radius:10px;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;box-shadow:var(--shadow)}
 /* 牌背: 靛蓝底 + 细线双框 + 八角星纹 */
-.tback{background:#262147;border:1px solid #4a4478;overflow:hidden}
+.tback{background:#262147;border:1px solid #4a4478}
 .tback svg{position:absolute;inset:0;width:100%;height:100%}
 .tback .f1{fill:none;stroke:#6f66b0;stroke-width:1}
 .tback .f2{fill:none;stroke:#554d92;stroke-width:.7}
 .tback .st{fill:#9d93dd}
-/* 牌面: 细内框 + 圆形纹章托着牌意 */
-.tfront{background:var(--card);border:1px solid var(--border);transform:rotateY(180deg);padding:10px 6px}
-.tfront::before{content:'';position:absolute;inset:5px;border:1px solid var(--border);border-radius:8px;pointer-events:none}
-.tfront .tnum{position:absolute;top:9px;left:0;right:0;text-align:center;font-family:var(--serif);font-size:10px;color:var(--muted);letter-spacing:1.5px}
-.tfront .tp{position:absolute;top:28px;left:0;right:0;text-align:center;font-size:9px;color:var(--muted);letter-spacing:.5px;opacity:.85}
-.tfront .tmed{width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:29px;background:radial-gradient(circle at 35% 30%,#f6eddb,#eadcc0);border:1px solid #dbcba9;box-shadow:inset 0 0 0 3px rgba(255,255,255,.55)}
-.tfront .tmed.rev{transform:rotate(180deg)}
-.tfront .tn{font-family:var(--serif);font-size:13px;font-weight:500;letter-spacing:1.5px}
-.tfront .tr{font-size:9.5px;color:var(--muted);letter-spacing:3px;text-indent:3px}
-@media(prefers-color-scheme:dark){.tfront .tmed{background:radial-gradient(circle at 35% 30%,#4c4658,#3b3648);border-color:#585264;box-shadow:inset 0 0 0 3px rgba(255,255,255,.08)}}
+/* 牌面: 1909 韦特原版(公有领域),整张铺满 */
+.tfront{background:#f4efe0;border:1px solid #cfc4a5;transform:rotateY(180deg)}
+.tfront img.tart{width:100%;height:100%;object-fit:cover;display:block}
+.tfront img.tart.rev{transform:rotate(180deg)}
+.tcap{text-align:center;font-size:10.5px;color:var(--muted);margin-top:7px;letter-spacing:.5px;line-height:1.5;opacity:0;transition:opacity .4s}
+.tcard.flip .tcap{opacity:1}
 .reading{font-family:var(--serif);font-size:14.5px;line-height:1.9;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin-top:14px;white-space:pre-wrap;animation:fadeUp .35s ease both}
 .hide{display:none !important}
 body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
@@ -170,6 +173,8 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="him hide" id="tarotThink"><div class="av">🐰</div><div class="hb thinking">他在看牌…</div></div>
   </div>
 </div>
+
+<div class="mecard" id="mecard"><div class="mav2" id="meAv">🌸</div><div class="metext" id="meText"></div></div>
 
 <nav class="tabbar">
   <a href="/"><svg viewBox="0 0 24 24"><path d="M21 7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1v4l5-4h8a2 2 0 0 0 2-2z"/></svg>消息</a>
@@ -446,7 +451,8 @@ function tarotDraw(){
   drawn.forEach((c,j)=>{
     const el=document.createElement('div');
     el.className='tcard';
-    el.innerHTML='<div class="in">'
+    const num=String(c.idx).padStart(2,'0');
+    el.innerHTML='<div class="flipwrap"><div class="in">'
       +'<div class="tface tback"><svg viewBox="0 0 100 168">'
         +'<rect class="f1" x="6" y="6" width="88" height="156" rx="8"/>'
         +'<rect class="f2" x="11" y="11" width="78" height="146" rx="6"/>'
@@ -455,12 +461,9 @@ function tarotDraw(){
         +'<path class="st" opacity=".65" d="M50 24l1.7 4 4 1.7-4 1.7-1.7 4-1.7-4-4-1.7 4-1.7z"/>'
         +'<path class="st" opacity=".65" d="M50 132l1.7 4 4 1.7-4 1.7-1.7 4-1.7-4-4-1.7 4-1.7z"/>'
       +'</svg></div>'
-      +'<div class="tface tfront">'
-      +'<div class="tnum">'+ROMAN[c.idx]+'</div>'
-      +(c.pos?'<div class="tp">'+c.pos+'</div>':'')
-      +'<div class="tmed'+(c.reversed?' rev':'')+'">'+c.emoji+'</div>'
-      +'<div class="tn">'+c.name+'</div>'
-      +'<div class="tr">'+(c.reversed?'逆位':'正位')+'</div></div></div>';
+      +'<div class="tface tfront"><img class="tart'+(c.reversed?' rev':'')+'" src="/tarot/'+num+'.jpg" alt=""></div>'
+      +'</div></div>'
+      +'<div class="tcap">'+(c.pos?c.pos+' · ':'')+ROMAN[c.idx]+' '+c.name+' · '+(c.reversed?'逆位':'正位')+'</div>';
     el.onclick=()=>{
       if(el.classList.contains('flip'))return;
       el.classList.add('flip');
@@ -483,6 +486,23 @@ async function tarotRead(){
   box.classList.remove('hide');
 }
 
+// 你的消息在右上角浮几秒
+let meTimer=0;
+function showMe(text){
+  const card=document.getElementById('mecard');
+  document.getElementById('meText').textContent=text;
+  try{
+    const d=JSON.parse(localStorage.getItem('bunny_decor_v1')||'{}');
+    const v=String(d.myAv||'');
+    const url=v.startsWith('img:')?v.slice(4):(v.startsWith('data:')?v:'');
+    const av=document.getElementById('meAv');
+    if(url){av.style.backgroundImage="url('"+url+"')";av.textContent=''}
+  }catch(e){}
+  card.classList.add('show');
+  clearTimeout(meTimer);
+  meTimer=setTimeout(()=>card.classList.remove('show'),4000);
+}
+
 // 棋盘边聊天: 他叭叭叭的时候,你也能叭回去
 const chatLogs={ttt:[],gomoku:[]};
 function bindBoardChat(inpId,btnId,kind){
@@ -492,6 +512,7 @@ function bindBoardChat(inpId,btnId,kind){
     const v=inp.value.trim();
     if(!v||sending)return;
     sending=true;inp.value='';
+    showMe(v);
     const log=chatLogs[kind];
     log.push({who:'her',text:v});
     const game=kind==='ttt'?(tMode==='ultimate'?'ultimate':'ttt'):'gomoku';
