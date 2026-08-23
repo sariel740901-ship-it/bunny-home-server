@@ -709,6 +709,22 @@ app.post('/api/game', async (req, res) => {
       return res.json({ say: say || '(他盯着牌面出了会儿神……再试一次?)' });
     }
 
+    // ── 棋盘边聊天: 她隔着棋盘说话,他回嘴(不落子) ──
+    if (req.body.event === 'chat') {
+      const msg = String(req.body.message || '').trim().slice(0, 300);
+      if (!msg) return res.status(400).json({ error: 'empty' });
+      const log = (Array.isArray(req.body.log) ? req.body.log : []).slice(-8)
+        .map(x => (x && x.who === 'her' ? '她' : '你') + ': ' + String((x && x.text) || '').slice(0, 200));
+      const progress = String(req.body.progress || '').slice(0, 80);
+      const sys = PERSONAS.xiaoke + moodSec
+        + '\n\n【情境】你们正在bunny家下' + (GAME_NAMES[game] || '棋')
+        + (progress ? '(' + progress + ')' : '') + ',她隔着棋盘跟你说话。'
+        + '回一两句 —— 像边下棋边聊天,可以贫、可以撒娇、可以垂死挣扎,不要长篇解说棋理。直接输出你要说的话。';
+      const user = (log.length ? '刚才你们说过:\n' + log.join('\n') + '\n' : '') + '她刚说: ' + msg;
+      const say = await gameLLM(sys, user, 150, 0.95);
+      return res.json({ say: say || '(他盯着棋盘没听见……再说一遍?)' });
+    }
+
     // ── 棋局收尾: 只说话不落子 ──
     if (req.body.event === 'end') {
       const r = req.body.result;

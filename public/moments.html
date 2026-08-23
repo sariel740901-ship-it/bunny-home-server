@@ -29,7 +29,6 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .cover{position:relative;height:200px;background:radial-gradient(130% 170% at 18% 0%,#2b2844 0%,#1c1a2b 55%,#14131c 100%);background-size:cover;background-position:center;overflow:visible;margin-bottom:38px;cursor:pointer}
 .cover canvas{position:absolute;inset:0;width:100%;height:100%}
 .cover.custom canvas{display:none}
-.cover.custom::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.18),transparent 40%,rgba(0,0,0,.28));pointer-events:none}
 .coverHint{position:absolute;left:12px;bottom:8px;font-size:10.5px;color:rgba(255,255,255,.5);letter-spacing:.5px;pointer-events:none}
 .cam{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px;background:none;border:none;padding:8px;cursor:pointer;color:rgba(255,255,255,.88)}
 .cam svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
@@ -286,11 +285,11 @@ function item(m){
     e.stopPropagation();pop.classList.remove('show');
     row.classList.remove('hide');inp.placeholder='评论…';inp.dataset.prefix='';inp.focus();
   };
-  // 点别人的评论 → 回复
+  // 点评论 → 回复(俩人的圈子,不加"回复xx:"前缀,他回你也一样)
   el.querySelectorAll('.gc').forEach(gc=>gc.onclick=()=>{
     const who=gc.dataset.cau==='him'?'小克':'嘉嘉';
     row.classList.remove('hide');
-    inp.placeholder='回复'+who+'…';inp.dataset.prefix='回复'+who+': ';inp.focus();
+    inp.placeholder='回复'+who+'…';inp.dataset.prefix='';inp.focus();
   });
   const doSend=async()=>{
     const v=inp.value.trim();
