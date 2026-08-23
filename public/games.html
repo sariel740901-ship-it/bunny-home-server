@@ -76,11 +76,11 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 /* 五子棋 */
 #gmkC{display:block;margin:0 auto;border-radius:14px;box-shadow:var(--shadow);touch-action:manipulation}
 
-/* 你的消息: 右上角浮几秒(带你的头像) */
-.mecard{position:fixed;top:54px;right:10px;z-index:9;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:7px 11px;max-width:72%;opacity:0;transform:translateY(-6px);transition:opacity .25s,transform .25s;pointer-events:none}
-.mecard.show{opacity:1;transform:none}
-.mecard .mav2{width:26px;height:26px;border-radius:7px;background:var(--chip);display:flex;align-items:center;justify-content:center;font-size:15px;background-size:cover;background-position:center;flex-shrink:0}
-.mecard .metext{font-size:13px;line-height:1.5;word-break:break-word}
+/* 你的消息: 固定在他的字条下方,发送时回显几秒后淡出(位置不动,键盘弹起也不跑) */
+.her{display:flex;gap:10px;margin:2px 0 0;min-height:36px}
+.her .av{width:30px;height:30px;border-radius:9px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;box-shadow:var(--shadow);background-size:cover;background-position:center;align-self:flex-start}
+.her .hb{font-size:13.5px;line-height:1.7;padding:3px 2px;word-break:break-word;opacity:0;transition:opacity .5s}
+.her .hb.show{opacity:1}
 
 /* 棋盘边聊天 */
 .chatrow{display:flex;gap:8px;margin-top:10px}
@@ -145,6 +145,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="ttt" id="tttBoard"></div>
     <div class="ult hide" id="ultBoard"></div>
     <div class="him"><div class="av">🐰</div><div class="hb" id="tttSay"></div></div>
+    <div class="her"><div class="av" data-herav>🌸</div><div class="hb" id="tttMe"></div></div>
     <div class="chatrow"><input id="tttChat" placeholder="跟他说句话…" maxlength="300"><button class="pill" id="tttChatBtn">发送</button></div>
   </div>
 
@@ -157,6 +158,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     </div>
     <canvas id="gmkC"></canvas>
     <div class="him"><div class="av">🐰</div><div class="hb" id="gmkSay"></div></div>
+    <div class="her"><div class="av" data-herav>🌸</div><div class="hb" id="gmkMe"></div></div>
     <div class="chatrow"><input id="gmkChat" placeholder="跟他说句话…" maxlength="300"><button class="pill" id="gmkChatBtn">发送</button></div>
   </div>
 
@@ -173,8 +175,6 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="him hide" id="tarotThink"><div class="av">🐰</div><div class="hb thinking">他在看牌…</div></div>
   </div>
 </div>
-
-<div class="mecard" id="mecard"><div class="mav2" id="meAv">🌸</div><div class="metext" id="meText"></div></div>
 
 <nav class="tabbar">
   <a href="/"><svg viewBox="0 0 24 24"><path d="M21 7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1v4l5-4h8a2 2 0 0 0 2-2z"/></svg>消息</a>
@@ -486,22 +486,26 @@ async function tarotRead(){
   box.classList.remove('hide');
 }
 
-// 你的消息在右上角浮几秒
-let meTimer=0;
-function showMe(text){
-  const card=document.getElementById('mecard');
-  document.getElementById('meText').textContent=text;
+// 你的消息: 在他的字条下方回显几秒再淡出(头像常驻,位置固定)
+const meTimers={};
+function showMe(id,text){
+  const el=document.getElementById(id);
+  el.textContent=text;
+  el.classList.add('show');
+  clearTimeout(meTimers[id]);
+  meTimers[id]=setTimeout(()=>el.classList.remove('show'),5000);
+}
+// 你的头像沿用聊天页装扮
+(function(){
   try{
     const d=JSON.parse(localStorage.getItem('bunny_decor_v1')||'{}');
     const v=String(d.myAv||'');
     const url=v.startsWith('img:')?v.slice(4):(v.startsWith('data:')?v:'');
-    const av=document.getElementById('meAv');
-    if(url){av.style.backgroundImage="url('"+url+"')";av.textContent=''}
+    if(url)document.querySelectorAll('[data-herav]').forEach(el=>{
+      el.style.backgroundImage="url('"+url+"')";el.textContent='';
+    });
   }catch(e){}
-  card.classList.add('show');
-  clearTimeout(meTimer);
-  meTimer=setTimeout(()=>card.classList.remove('show'),4000);
-}
+})();
 
 // 棋盘边聊天: 他叭叭叭的时候,你也能叭回去
 const chatLogs={ttt:[],gomoku:[]};
@@ -512,7 +516,7 @@ function bindBoardChat(inpId,btnId,kind){
     const v=inp.value.trim();
     if(!v||sending)return;
     sending=true;inp.value='';
-    showMe(v);
+    showMe(kind==='ttt'?'tttMe':'gmkMe',v);
     const log=chatLogs[kind];
     log.push({who:'her',text:v});
     const game=kind==='ttt'?(tMode==='ultimate'?'ultimate':'ttt'):'gomoku';
