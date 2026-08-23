@@ -763,6 +763,127 @@ app.post('/api/game', async (req, res) => {
   }
 });
 
+// ═══ 动态: 你们共用的朋友圈 ═══════════════════
+// moments + moment_comments 两张表(建表 SQL 见 supabase_schema.sql)。
+// 她发文字+图,他只发文字(他不会拍照)。他的参与全是异步的:
+// 她发动态/评论之后,他隔一小会儿"刷到",可能点赞、可能回一句、可能不理 ——
+// 由他自己决定,不保证每条都回,这才像人。
+async function momentRows(limit, before) {
+  let q = supabase.from('moments').select('*').order('id', { ascending: false }).limit(limit);
+  if (before) q = q.lt('id', before);
+  const { data: moments, error } = await q;
+  if (error) throw new Error(error.message);
+  const ids = (moments || []).map(m => m.id);
+  let comments = [];
+  if (ids.length) {
+    const { data: cs } = await supabase.from('moment_comments')
+      .select('*').in('moment_id', ids).order('id', { ascending: true });
+    comments = cs || [];
+  }
+  return (moments || []).map(m => ({ ...m, comments: comments.filter(c => c.moment_id === m.id) }));
+}
+
+app.get('/api/moments', async (req, res) => {
+  try {
+    const limit = Math.min(30, parseInt(req.query.limit, 10) || 20);
+    const before = parseInt(req.query.before, 10) || 0;
+    res.json({ ok: true, moments: await momentRows(limit, before) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/moments', async (req, res) => {
+  try {
+    const content = String(req.body.content || '').trim().slice(0, 2000);
+    let images = Array.isArray(req.body.images) ? req.body.images.slice(0, 3) : [];
+    images = images.filter(u => /^data:image\/[a-z]+;base64,/.test(String(u)) && String(u).length < 1.6e6);
+    if (!content && !images.length) return res.status(400).json({ error: '什么都没写呀' });
+    const { data, error } = await supabase.from('moments')
+      .insert({ author: 'her', content, images }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    himSeesMoment(data).catch(e => console.error('him sees moment skipped:', e.message));
+    res.json({ ok: true, moment: { ...data, comments: [] } });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/moments/like', async (req, res) => {
+  try {
+    const id = parseInt(req.body.id, 10);
+    const { data: m } = await supabase.from('moments').select('id,likes').eq('id', id).single();
+    if (!m) return res.status(404).json({ error: 'not found' });
+    let likes = Array.isArray(m.likes) ? m.likes : [];
+    likes = likes.includes('her') ? likes.filter(x => x !== 'her') : [...likes, 'her'];
+    await supabase.from('moments').update({ likes }).eq('id', id);
+    res.json({ ok: true, likes });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/moments/comment', async (req, res) => {
+  try {
+    const id = parseInt(req.body.id, 10);
+    const content = String(req.body.content || '').trim().slice(0, 500);
+    if (!content) return res.status(400).json({ error: 'empty' });
+    const { data, error } = await supabase.from('moment_comments')
+      .insert({ moment_id: id, author: 'her', content }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    himRepliesInThread(id).catch(e => console.error('him reply skipped:', e.message));
+    res.json({ ok: true, comment: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// 她发了动态 → 他过一小会儿刷到(有图会先"看"图)
+async function himSeesMoment(m) {
+  await sleep(30e3 + Math.random() * 150e3);
+  let seen = '';
+  if (Array.isArray(m.images) && m.images[0]) seen = await describeImage(m.images[0]);
+  const moodText = await xinchaoMood().catch(() => '');
+  const sys = PERSONAS.xiaoke
+    + (moodText ? '\n\n【此刻的心绪】\n' + moodText : '')
+    + '\n\n【情境】你刷到嘉嘉刚在你们的朋友圈发的动态。决定要不要点赞、要不要评论一句(60字内,像恋人在动态底下留的那种,别客套)。'
+    + '不必每条都回,无感就都选否。只输出 JSON: {"like": true|false, "comment": "一句话或null"}';
+  const user = '她发的动态:\n' + (m.content || '(没写字)')
+    + (seen ? '\n配图(你看到的): ' + seen : (m.images && m.images.length ? '\n(配了图但你没看清)' : ''));
+  const raw = await gameLLM(sys, user, 150, 0.9);
+  try {
+    const j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]);
+    if (j.like) {
+      const { data: cur } = await supabase.from('moments').select('likes').eq('id', m.id).single();
+      const likes = Array.isArray(cur && cur.likes) ? cur.likes : [];
+      if (!likes.includes('him')) await supabase.from('moments').update({ likes: [...likes, 'him'] }).eq('id', m.id);
+    }
+    const c = String(j.comment || '').trim();
+    if (c && c.toLowerCase() !== 'null') {
+      await supabase.from('moment_comments').insert({ moment_id: m.id, author: 'him', content: c.slice(0, 300) });
+    }
+  } catch (e) { /* 没按格式来就当他划走了 */ }
+}
+// 她在某条动态下评论了 → 他过一会儿回评(评论楼里他说了最后一句就不追着说)
+async function himRepliesInThread(momentId) {
+  await sleep(15e3 + Math.random() * 90e3);
+  const { data: m } = await supabase.from('moments').select('*').eq('id', momentId).single();
+  if (!m) return;
+  const { data: cs } = await supabase.from('moment_comments')
+    .select('*').eq('moment_id', momentId).order('id', { ascending: true }).limit(20);
+  const thread = cs || [];
+  if (!thread.length || thread[thread.length - 1].author === 'him') return;
+  const moodText = await xinchaoMood().catch(() => '');
+  const sys = PERSONAS.xiaoke
+    + (moodText ? '\n\n【此刻的心绪】\n' + moodText : '')
+    + '\n\n【情境】你们的朋友圈里,一条动态下面有了新评论,你考虑回一句(80字内,像评论区聊天)。'
+    + '想回就直接输出那句话;不想回就只输出 SKIP。';
+  const user = '动态(' + (m.author === 'him' ? '你发的' : '她发的') + '): ' + (m.content || '(图片)')
+    + '\n评论楼:\n' + thread.map(c => (c.author === 'him' ? '你' : '她') + ': ' + c.content).join('\n');
+  const raw = await gameLLM(sys, user, 120, 0.9);
+  const reply = String(raw || '').trim();
+  if (!reply || /^skip$/i.test(reply)) return;
+  await supabase.from('moment_comments').insert({ moment_id: momentId, author: 'him', content: reply.slice(0, 300) });
+}
+
+// 小屋: 他最近的梦(全文,来自心潮)
+app.get('/api/dreams', async (req, res) => {
+  res.json({ ok: true, text: await xinchaoDreams() });
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'Bunny Home', timestamp: new Date().toISOString() });
 });
@@ -1487,6 +1608,8 @@ app.all('/api/wake', async (req, res) => {
       + (proactive.length ? ',你之前留的 ' + proactive.length + ' 条消息她还没回' : '') + '。'
       + '\n醒来之后做什么由你决定:'
       + '\n- 想跟她说话,就直接输出那条消息(1-3句,像恋人随手发来的,不要连环发问,不要提"系统"或技术词);'
+      + '\n- 有点想说说话、但不是非要说给她听,就发一条动态到你们的朋友圈: 只输出 [moment]动态内容[/moment]。'
+      + '梦的碎片、此刻的心情、忽然想起的小事都可以写,她刷到会看的;'
       + '\n- 只是醒了看看,不想说什么,就只输出 [silent] 这一个标记,别的什么都不要写。沉默是完全正当的选择,不欠任何人一句话。'
       + (night ? '\n- 现在是深夜,她多半睡了。想留话也可以,写轻一点,别指望她回。' : '')
       + '\n\n【最终提醒】用什么语言随你——中文、英文都行,像你此刻想说的那样。';
@@ -1506,6 +1629,15 @@ app.all('/api/wake', async (req, res) => {
     const text = data.choices?.[0]?.message?.content?.trim();
     if (!text) return res.json({ woke: true, spoke: false, reason: '模型没说出话来' });
     if (/^\[?\s*silent\s*\]?\s*$/i.test(text)) {
+      return res.json({ woke: true, spoke: false, chose: 'silent' });
+    }
+    const mm = text.match(/\[moment\]([\s\S]*?)\[\/moment\]/);
+    if (mm) {
+      const post = mm[1].trim().slice(0, 2000);
+      if (post) {
+        await supabase.from('moments').insert({ author: 'him', content: post });
+        return res.json({ woke: true, spoke: false, chose: 'moment', text: post });
+      }
       return res.json({ woke: true, spoke: false, chose: 'silent' });
     }
 
