@@ -59,9 +59,13 @@ async function touchSession(sessionId) {
 }
 
 // ═══ API 配置 ═════════════════════════════
+// 2026-07-24 起旧别名 deepseek-chat / deepseek-reasoner 官方退役(目前靠宽限期苟着),
+// 迁到 V4 正式 ID。思考链不再换模型,而是同一个模型开 thinking;
+// 识图用官方多模态 V4-Flash-Vision(同一把 key,图不再出深度求索)。
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const API_URL = 'https://api.deepseek.com/chat/completions';
-const API_MODEL = 'deepseek-chat';
+const API_MODEL = (process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash').trim();
+const VISION_MODEL = (process.env.DEEPSEEK_VISION_MODEL || 'deepseek-v4-flash-vision-exp').trim();
 
 // ═══ 系统提示词 ═══════════════════════════
 const PERSONAS = {
@@ -563,7 +567,7 @@ app.get('/api/tools', (req, res) => {
     { key: 'bark', name: '锁屏推送', desc: '留言同步推到手机锁屏 (Bark)', on: !!process.env.BARK_URL },
     { key: 'stackchan', name: '小方块', desc: '桌上的 StackChan 替他开口', on: !!process.env.STACKCHAN_ANNOUNCE_URL },
     { key: 'fingertips', name: '指尖', desc: '感知你打字时的犹豫节奏', on: true },
-    { key: 'vision', name: '识图', desc: '你发的图片他能看清(Gemini 的眼睛)', on: !!GEMINI_KEY }
+    { key: 'vision', name: '识图', desc: '你发的图片他能看清(自己的眼睛)', on: !!API_KEY }
   ]);
 });
 
@@ -644,11 +648,49 @@ function imgToText(text) {
   );
 }
 
-// 他的眼睛: DeepSeek 不认图,图先经 Gemini 看一遍,把看到的讲给他
-// key 去掉误粘的引号/空白 —— 400 API_KEY_INVALID 十有八九是这个
+// 他的眼睛: 首选 DeepSeek 官方多模态(V4-Flash-Vision)—— 同一把 key,
+// 图不再送去 Google;失败时退回 Gemini 后备(配了 GEMINI_API_KEY 才有)。
+const SEEN_PROMPT = '用中文细致描述这张图片(100~200字): 画面里有什么、什么氛围;图上如有文字,一字不差抄下来。只输出描述本身,不要开场白。';
+async function describeImageDeepseek(dataUrl) {
+  const m = String(dataUrl || '').match(/^data:image\/([a-z]+);base64,.+$/);
+  if (!m || !API_KEY) return '';
+  try {
+    const resp = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+      body: JSON.stringify({
+        model: VISION_MODEL, max_tokens: 400, temperature: 0.3,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: SEEN_PROMPT },
+            { type: 'file', file_data: dataUrl, filename: 'photo.' + (m[1] === 'jpeg' ? 'jpg' : m[1]) }
+          ]
+        }]
+      }),
+      timeout: 30000
+    });
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '');
+      console.error('vision(deepseek) http ' + resp.status + ': ' + errBody.replace(/\s+/g, ' ').slice(0, 300));
+      return '';
+    }
+    const d = await resp.json();
+    return String(d.choices?.[0]?.message?.content || '').trim().slice(0, 600);
+  } catch (e) {
+    console.error('vision(deepseek) skipped:', e.message);
+    return '';
+  }
+}
+
+async function describeImage(dataUrl) {
+  return (await describeImageDeepseek(dataUrl)) || (await describeImageGemini(dataUrl));
+}
+
+// Gemini 后备眼睛。key 去掉误粘的引号/空白 —— 400 API_KEY_INVALID 十有八九是这个
 const GEMINI_KEY = (process.env.GEMINI_API_KEY || '').trim().replace(/^["']|["']$/g, '');
 const GEMINI_MODEL = ((process.env.GEMINI_MODEL || '').trim() || 'gemini-2.5-flash');
-async function describeImage(dataUrl) {
+async function describeImageGemini(dataUrl) {
   if (!GEMINI_KEY) return '';
   const m = String(dataUrl || '').match(/^data:(image\/[a-z]+);base64,(.+)$/);
   if (!m) return '';
@@ -660,7 +702,7 @@ async function describeImage(dataUrl) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [
-            { text: '用中文细致描述这张图片(100~200字): 画面里有什么、什么氛围;图上如有文字,一字不差抄下来。只输出描述本身,不要开场白。' },
+            { text: SEEN_PROMPT },
             { inline_data: { mime_type: m[1], data: m[2] } }
           ] }]
         }),
@@ -687,7 +729,7 @@ app.post('/api/chat', async (req, res) => {
   const toolsOff = new Set(Array.isArray(req.body.tools_off) ? req.body.tools_off : []);
 
   try {
-    // 0. 发来的是图片? 先让他"看"一眼(Gemini),识图结果藏在 [seen] 里随消息落库
+    // 0. 发来的是图片? 先让他"看"一眼(DeepSeek 多模态,Gemini 兜底),识图结果藏在 [seen] 里随消息落库
     let storedMessage = message;
     let sawImage = false;
     const imgMatch = message.match(/\[img\](data:image\/[a-z]+;base64,[A-Za-z0-9+/=]+)\[\/img\]/);
@@ -824,9 +866,10 @@ app.post('/api/chat', async (req, res) => {
         'Authorization': 'Bearer ' + API_KEY
       },
       body: JSON.stringify({
-        model: useThink ? 'deepseek-reasoner' : API_MODEL,
+        model: API_MODEL,
         max_tokens: 2048,
-        temperature: 0.8,
+        temperature: 0.8, // thinking 模式下会被忽略,无碍
+        ...(useThink ? { thinking: { type: 'enabled' } } : {}),
         messages: apiMessages
       })
     });
