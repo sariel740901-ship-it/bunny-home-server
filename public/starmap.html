@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#14131c">
+<meta name="theme-color" content="#0b0a12">
 <title>记忆星图</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden}
-body{background:#14131c;color:#e8e4da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif}
+body{background:#0b0a12;color:#e8e4da;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif}
 canvas{display:block;touch-action:none;cursor:grab}
 canvas.drag{cursor:grabbing}
-.topbar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:10px 14px calc(10px);z-index:5;background:linear-gradient(180deg,rgba(20,19,28,.85),transparent);pointer-events:none}
+.topbar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;z-index:5;background:linear-gradient(180deg,rgba(11,10,18,.85),transparent);pointer-events:none}
 .topbar>*{pointer-events:auto}
 .topbar h1{font-family:Georgia,'Songti SC',serif;font-size:16px;font-weight:600;letter-spacing:1px}
 .txt-btn{padding:7px 12px;border-radius:10px;border:none;font-size:13.5px;cursor:pointer;background:rgba(255,255,255,.08);color:#e8e4da;font-family:inherit}
@@ -19,8 +19,7 @@ canvas.drag{cursor:grabbing}
 .count{font-size:11.5px;color:rgba(232,228,218,.5);letter-spacing:.5px}
 .hint{position:fixed;bottom:calc(14px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:11.5px;color:rgba(232,228,218,.4);z-index:4;pointer-events:none;transition:opacity .5s}
 .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(232,228,218,.6);font-size:14px;z-index:3}
-/* 点开一颗星: 底部卡片 */
-.card{position:fixed;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));max-width:520px;margin:0 auto;background:rgba(30,28,40,.94);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px 16px;z-index:6;transform:translateY(120%);transition:transform .25s ease;max-height:44vh;overflow-y:auto}
+.card{position:fixed;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));max-width:520px;margin:0 auto;background:rgba(24,22,36,.94);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px 16px;z-index:6;transform:translateY(120%);transition:transform .25s ease;max-height:44vh;overflow-y:auto}
 .card.show{transform:none}
 .card .cname{font-size:15px;font-weight:600;line-height:1.5}
 .card .cmeta{font-size:11.5px;color:rgba(232,228,218,.55);margin-top:4px;line-height:1.7}
@@ -32,11 +31,11 @@ canvas.drag{cursor:grabbing}
 <body>
 <canvas id="sky"></canvas>
 <header class="topbar">
-  <button class="txt-btn" onclick="location.href='/'">返回</button>
+  <button class="txt-btn" onclick="history.length>1?history.back():location.href='/house.html'">返回</button>
   <h1>记忆星图</h1>
   <span class="count" id="count"></span>
 </header>
-<div class="hint" id="hint">拖动漫游 · 双指缩放 · 点一颗星看看它是哪段记忆</div>
+<div class="hint" id="hint">拖动环顾四周 · 双指/滚轮缩放 · 点一颗星看看它是哪段记忆</div>
 <div class="loading" id="loading">正在铺开夜空…</div>
 <div class="card" id="card">
   <button class="cclose" onclick="closeCard()">收起</button>
@@ -46,7 +45,7 @@ canvas.drag{cursor:grabbing}
   <div class="cprev" id="cPrev" style="display:none"></div>
 </div>
 <script>
-// ═══ 门禁钥匙(和聊天页同一把,存同一个 localStorage 键) ═══
+// ═══ 门禁钥匙(和聊天页同一把) ═══
 const BUNNY_KEY_LS='bunny_api_key';
 (function(){
   const orig=window.fetch.bind(window);
@@ -65,50 +64,109 @@ const BUNNY_KEY_LS='bunny_api_key';
   };
 })();
 
-// ═══ 数据 → 星星布局 ═══════════════════════════════════
-// 按领域聚成星云: 星云中心排在金角螺线上,云内位置由 id 哈希决定(确定性,每次进来星星都在原位)。
+// ═══ 3D 天象仪 ═══════════════════════════════════════════
+// 你站在天球中心仰望: 每段记忆是球面上的一颗星,同领域的记忆聚成一个星座
+// (座内有淡淡的连线),背景是确定性生成的星野 + 银河带 + 三片星云。
+// 拖动 = 转头环顾;缩放 = 改视场角(25°~95°)。所有位置由 id 哈希决定,
+// 每次进来,每颗星都在原处 —— 这才配叫星图。
 const canvas=document.getElementById('sky');
 const ctx=canvas.getContext('2d');
-let stars=[],clusters={},view={x:0,y:0,scale:1},selected=null;
+let stars=[],clusters=[],lines=[],selected=null;
+let cam={yaw:0,pitch:0,fov:70*Math.PI/180};
 
 function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
 function h01(s,salt){return (hash(s+'|'+salt)%10000)/10000}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const norm=v=>{const l=Math.hypot(v[0],v[1],v[2])||1;return[v[0]/l,v[1]/l,v[2]/l]};
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+// 在方向 c 附近偏 θ 角、方位 φ 的新方向
+function offsetDir(c,theta,phi){
+  const up=Math.abs(c[1])<0.92?[0,1,0]:[1,0,0];
+  const e1=norm(cross(up,c)),e2=cross(c,e1);
+  const s=Math.sin(theta);
+  return norm([
+    c[0]*Math.cos(theta)+s*(e1[0]*Math.cos(phi)+e2[0]*Math.sin(phi)),
+    c[1]*Math.cos(theta)+s*(e1[1]*Math.cos(phi)+e2[1]*Math.sin(phi)),
+    c[2]*Math.cos(theta)+s*(e1[2]*Math.cos(phi)+e2[2]*Math.sin(phi))
+  ]);
+}
 
+// ── 记忆星布局: 星座 = 领域 ──
 function layout(list){
   const byDomain={};
   for(const s of list)(byDomain[s.domain]=byDomain[s.domain]||[]).push(s);
   const domains=Object.keys(byDomain).sort((a,b)=>byDomain[b].length-byDomain[a].length);
-  const GA=2.39996; // 金角
-  clusters={};
-  domains.forEach((d,i)=>{
-    const dist=i===0?0:140+95*Math.sqrt(i);
-    const a=i*GA;
-    clusters[d]={x:Math.cos(a)*dist,y:Math.sin(a)*dist,r:34+16*Math.sqrt(byDomain[d].length),n:byDomain[d].length};
+  // 星座中心撒在天球环带上(斐波那契均布,压到 |y|<0.72 方便看到)
+  clusters=domains.map((d,i)=>{
+    const n=domains.length,GA=Math.PI*(3-Math.sqrt(5));
+    const y=(n===1?0:(1-2*(i+0.5)/n))*0.72;
+    const r=Math.sqrt(1-y*y),a=i*GA*2.7+hash(d)%7;
+    return{name:d,dir:norm([Math.cos(a)*r,y,Math.sin(a)*r]),
+      R:Math.min(0.34,0.10+0.045*Math.sqrt(byDomain[d].length)),n:byDomain[d].length,stars:byDomain[d]};
   });
   const maxScore=Math.max(0.001,...list.map(s=>s.score||0));
-  for(const s of list){
-    const c=clusters[s.domain];
-    const a=h01(s.id,'a')*Math.PI*2;
-    const r=Math.sqrt(h01(s.id,'r'))*c.r;
-    s.x=c.x+Math.cos(a)*r;
-    s.y=c.y+Math.sin(a)*r*0.8;
-    s.size=1.4+3.4*Math.pow((s.score||0)/maxScore,0.6)+(s.importance>=9?0.8:0);
-    const days=s.active?(Date.now()-s.active)/864e5:999;
-    s.fresh=Math.max(0,1-days/30);            // 30 天内算"还亮着"
-    s.tw=h01(s.id,'t')*Math.PI*2;             // 闪烁相位
+  for(const c of clusters){
+    for(const s of c.stars){
+      const theta=Math.sqrt(h01(s.id,'r'))*c.R;
+      const phi=h01(s.id,'a')*Math.PI*2;
+      s.dir=offsetDir(c.dir,theta,phi);
+      s.size=1.3+3.2*Math.pow((s.score||0)/maxScore,0.6)+(s.importance>=9?0.7:0);
+      const days=s.active?(Date.now()-s.active)/864e5:999;
+      s.fresh=Math.max(0,1-days/30);
+      s.tw=h01(s.id,'t')*Math.PI*2;
+    }
+  }
+  // 星座连线: 每座取最亮的 ≤14 颗,后来的星连向已连成形里最近的一颗(生成树,像手绘星座)
+  lines=[];
+  for(const c of clusters){
+    const bright=[...c.stars].sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,14)
+      .sort((a,b)=>hash(a.id)-hash(b.id));
+    for(let i=1;i<bright.length;i++){
+      let best=0,bd=9;
+      for(let j=0;j<i;j++){
+        const d=1-(bright[i].dir[0]*bright[j].dir[0]+bright[i].dir[1]*bright[j].dir[1]+bright[i].dir[2]*bright[j].dir[2]);
+        if(d<bd){bd=d;best=j}
+      }
+      lines.push([bright[i],bright[best]]);
+    }
   }
   stars=list;
 }
 
-// 颜色: 情绪 valence 冷→暖
-function starColor(s){
-  const v=Math.max(0,Math.min(1,s.valence));
-  const c1=[126,150,214],c2=[242,183,109]; // 冷蓝 → 暖金
-  const mix=c1.map((a,i)=>Math.round(a+(c2[i]-a)*v));
-  return mix;
+// ── 背景星野(确定性,种子固定): 900 颗小星 + 银河带 + 三片星云 ──
+let field=[],milky=[],blobs=[],nebulae=[];
+function genBackground(){
+  const rnd=mulberry32(20260619);
+  const randDir=()=>{let x,y,z,l;do{x=rnd()*2-1;y=rnd()*2-1;z=rnd()*2-1;l=x*x+y*y+z*z}while(l>1||l<1e-4);const s=1/Math.sqrt(l);return[x*s,y*s,z*s]};
+  for(let i=0;i<900;i++){
+    const t=rnd();
+    field.push({dir:randDir(),r:0.3+rnd()*0.9,a:0.08+rnd()*0.42,
+      c:t<0.72?[220,224,238]:t<0.9?[178,196,244]:[240,214,178]});
+  }
+  // 银河: 一条倾斜的大圆带
+  const nrm=norm([0.42,1,0.25]);
+  const e1=norm(cross([0,0,1],nrm)),e2=cross(nrm,e1);
+  const gauss=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(6.2832*v)};
+  for(let i=0;i<1300;i++){
+    const a=rnd()*Math.PI*2,w=gauss()*0.12;
+    const base=[e1[0]*Math.cos(a)+e2[0]*Math.sin(a),e1[1]*Math.cos(a)+e2[1]*Math.sin(a),e1[2]*Math.cos(a)+e2[2]*Math.sin(a)];
+    milky.push({dir:norm([base[0]+nrm[0]*w,base[1]+nrm[1]*w,base[2]+nrm[2]*w]),
+      r:0.25+rnd()*0.65,a:0.04+rnd()*0.14});
+  }
+  for(let i=0;i<36;i++){
+    const a=rnd()*Math.PI*2,w=gauss()*0.10;
+    const base=[e1[0]*Math.cos(a)+e2[0]*Math.sin(a),e1[1]*Math.cos(a)+e2[1]*Math.sin(a),e1[2]*Math.cos(a)+e2[2]*Math.sin(a)];
+    blobs.push({dir:norm([base[0]+nrm[0]*w,base[1]+nrm[1]*w,base[2]+nrm[2]*w]),r:26+rnd()*46,a:0.028+rnd()*0.03});
+  }
+  nebulae=[
+    {dir:norm([0.7,0.25,0.4]),r:110,c:[124,110,205],a:0.055},
+    {dir:norm([-0.55,-0.1,0.72]),r:90,c:[96,166,172],a:0.05},
+    {dir:norm([-0.2,0.55,-0.75]),r:100,c:[186,110,140],a:0.045}
+  ];
 }
+genBackground();
 
-// ═══ 渲染 ═══════════════════════════════════════════════
+// ── 相机与投影 ──
 let W,H,DPR;
 function resize(){
   DPR=Math.min(2,window.devicePixelRatio||1);
@@ -117,50 +175,122 @@ function resize(){
   canvas.style.width=W+'px';canvas.style.height=H+'px';
 }
 window.addEventListener('resize',resize);resize();
+function focal(){return (Math.max(W,H)/2)/Math.tan(cam.fov/2)}
+// 世界方向 → 屏幕坐标(在背后返回 null)
+function project(p){
+  const cy=Math.cos(cam.yaw),sy=Math.sin(cam.yaw);
+  const x1=p[0]*cy-p[2]*sy,z1=p[0]*sy+p[2]*cy,y1=p[1];
+  const cp=Math.cos(cam.pitch),sp=Math.sin(cam.pitch);
+  const y2=y1*cp-z1*sp,z2=y1*sp+z1*cp;
+  if(z2<0.12)return null;
+  const f=focal();
+  return[W/2+x1/z2*f,H/2-y2/z2*f,z2];
+}
+function lookAt(dir){cam.yaw=Math.atan2(dir[0],dir[2]);cam.pitch=Math.asin(Math.max(-1,Math.min(1,dir[1])))}
 
-function worldToScreen(x,y){return[(x-view.x)*view.scale+W/2,(y-view.y)*view.scale+H/2]}
-function screenToWorld(x,y){return[(x-W/2)/view.scale+view.x,(y-H/2)/view.scale+view.y]}
+function starColor(s){
+  // 量化到 9 档,配合下面的光晕贴图缓存(600 颗星每帧现画渐变太烧手机)
+  const v=Math.round(Math.max(0,Math.min(1,s.valence))*8)/8;
+  const c1=[126,150,214],c2=[242,183,109];
+  return c1.map((a,i)=>Math.round(a+(c2[i]-a)*v));
+}
+const spriteCache={};
+function glowSprite(r,g,b){
+  const key=r+','+g+','+b;
+  if(spriteCache[key])return spriteCache[key];
+  const c=document.createElement('canvas');c.width=c.height=64;
+  const x=c.getContext('2d');
+  const gr=x.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0,'rgba(255,255,255,0.95)');
+  gr.addColorStop(0.22,'rgba('+r+','+g+','+b+',0.55)');
+  gr.addColorStop(1,'rgba('+r+','+g+','+b+',0)');
+  x.fillStyle=gr;x.fillRect(0,0,64,64);
+  spriteCache[key]=c;return c;
+}
 
+// ── 渲染 ──
 function draw(t){
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  const g=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*0.8);
-  g.addColorStop(0,'#1a1826');g.addColorStop(1,'#100f17');
+  const g=ctx.createRadialGradient(W/2,H*0.85,0,W/2,H/2,Math.max(W,H));
+  g.addColorStop(0,'#141223');g.addColorStop(0.55,'#0d0c17');g.addColorStop(1,'#080710');
   ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
-  // 星云底色 + 领域名
-  for(const d in clusters){
-    const c=clusters[d];
-    const[sx,sy]=worldToScreen(c.x,c.y);
-    const rr=c.r*view.scale*1.5;
-    if(sx<-rr||sx>W+rr||sy<-rr||sy>H+rr)continue;
-    const ng=ctx.createRadialGradient(sx,sy,0,sx,sy,rr);
-    ng.addColorStop(0,'rgba(150,140,200,0.07)');ng.addColorStop(1,'rgba(150,140,200,0)');
-    ctx.fillStyle=ng;ctx.beginPath();ctx.arc(sx,sy,rr,0,7);ctx.fill();
-    if(view.scale>0.3){
-      ctx.fillStyle='rgba(232,228,218,'+Math.min(0.45,view.scale*0.5)+')';
-      ctx.font='11px sans-serif';ctx.textAlign='center';
-      ctx.fillText(d+' · '+c.n,sx,sy-c.r*view.scale-8);
-    }
+  const zoom=Math.max(0.6,Math.min(2.2,(70*Math.PI/180)/cam.fov));
+
+  // 星云
+  for(const n of nebulae){
+    const p=project(n.dir);if(!p)continue;
+    const rr=n.r*zoom;
+    const ng=ctx.createRadialGradient(p[0],p[1],0,p[0],p[1],rr);
+    ng.addColorStop(0,'rgba('+n.c[0]+','+n.c[1]+','+n.c[2]+','+n.a+')');
+    ng.addColorStop(1,'rgba('+n.c[0]+','+n.c[1]+','+n.c[2]+',0)');
+    ctx.fillStyle=ng;ctx.beginPath();ctx.arc(p[0],p[1],rr,0,7);ctx.fill();
   }
-  // 星星
+  // 银河的雾
+  for(const b of blobs){
+    const p=project(b.dir);if(!p)continue;
+    const rr=b.r*zoom;
+    const bg=ctx.createRadialGradient(p[0],p[1],0,p[0],p[1],rr);
+    bg.addColorStop(0,'rgba(205,208,232,'+b.a+')');bg.addColorStop(1,'rgba(205,208,232,0)');
+    ctx.fillStyle=bg;ctx.beginPath();ctx.arc(p[0],p[1],rr,0,7);ctx.fill();
+  }
+  // 银河碎星 + 星野
+  for(const s of milky){
+    const p=project(s.dir);if(!p)continue;
+    ctx.fillStyle='rgba(214,218,238,'+s.a+')';
+    ctx.fillRect(p[0],p[1],s.r,s.r);
+  }
+  for(const s of field){
+    const p=project(s.dir);if(!p)continue;
+    ctx.fillStyle='rgba('+s.c[0]+','+s.c[1]+','+s.c[2]+','+s.a+')';
+    ctx.beginPath();ctx.arc(p[0],p[1],s.r*Math.min(1.4,zoom),0,7);ctx.fill();
+  }
+  // 星座连线
+  ctx.lineWidth=0.8;
+  for(const[a,b]of lines){
+    const pa=project(a.dir),pb=project(b.dir);
+    if(!pa||!pb)continue;
+    ctx.strokeStyle='rgba(168,182,226,0.14)';
+    ctx.beginPath();ctx.moveTo(pa[0],pa[1]);ctx.lineTo(pb[0],pb[1]);ctx.stroke();
+  }
+  // 星座名
+  for(const c of clusters){
+    const p=project(c.dir);if(!p)continue;
+    ctx.fillStyle='rgba(232,228,218,0.4)';
+    ctx.font='11px sans-serif';ctx.textAlign='center';
+    ctx.fillText(c.name+' · '+c.n,p[0],p[1]-c.R*focal()-10);
+  }
+  // 记忆星
   for(const s of stars){
-    const[sx,sy]=worldToScreen(s.x,s.y);
-    if(sx<-20||sx>W+20||sy<-20||sy>H+20)continue;
+    const p=project(s.dir);
+    if(!p){s._sx=null;continue}
+    s._sx=p[0];s._sy=p[1];
+    if(p[0]<-24||p[0]>W+24||p[1]<-24||p[1]>H+24)continue;
     const[r,g2,b]=starColor(s);
-    const twinkle=s.fresh>0.2?0.86+0.14*Math.sin(t/700+s.tw):1;
-    const alpha=(0.35+0.65*Math.max(s.fresh,0.12))*twinkle;
-    const rad=Math.max(0.8,s.size*Math.min(1.6,Math.max(0.5,view.scale)));
-    ctx.shadowColor='rgba('+r+','+g2+','+b+','+(alpha*0.9)+')';
-    ctx.shadowBlur=rad*(2.2+2*s.fresh);
-    ctx.fillStyle='rgba('+r+','+g2+','+b+','+alpha+')';
-    ctx.beginPath();ctx.arc(sx,sy,rad,0,7);ctx.fill();
-    ctx.shadowBlur=0;
-    if(s.pinned){ctx.strokeStyle='rgba(242,183,109,'+(alpha*0.8)+')';ctx.lineWidth=1;ctx.beginPath();ctx.arc(sx,sy,rad+3,0,7);ctx.stroke();}
-    if(selected&&selected.id===s.id){ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(sx,sy,rad+5,0,7);ctx.stroke();}
+    const twinkle=s.fresh>0.2?0.85+0.15*Math.sin(t/650+s.tw):1;
+    const alpha=(0.4+0.6*Math.max(s.fresh,0.14))*twinkle;
+    const rad=Math.max(0.9,s.size*zoom);
+    // 光晕 + 星芯(预渲染贴图)
+    const R=rad*3.2;
+    ctx.globalAlpha=alpha;
+    ctx.drawImage(glowSprite(r,g2,b),p[0]-R,p[1]-R,R*2,R*2);
+    ctx.globalAlpha=1;
+    // 亮星来四道衍射芒
+    if(s.size>3.4&&s.fresh>0.15){
+      ctx.strokeStyle='rgba('+r+','+g2+','+b+','+(alpha*0.35)+')';
+      ctx.lineWidth=0.8;
+      const L=rad*3.6*twinkle;
+      ctx.beginPath();
+      ctx.moveTo(p[0]-L,p[1]);ctx.lineTo(p[0]+L,p[1]);
+      ctx.moveTo(p[0],p[1]-L);ctx.lineTo(p[0],p[1]+L);
+      ctx.stroke();
+    }
+    if(s.pinned){ctx.strokeStyle='rgba(242,183,109,'+(alpha*0.8)+')';ctx.lineWidth=1;ctx.beginPath();ctx.arc(p[0],p[1],rad+3.5,0,7);ctx.stroke();}
+    if(selected&&selected.id===s.id){ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(p[0],p[1],rad+5,0,7);ctx.stroke();}
   }
   requestAnimationFrame(draw);
 }
 
-// ═══ 交互: 拖动 / 缩放 / 点选 ═══════════════════════════
+// ── 交互: 转头 / 变视场 / 点选 ──
 let pointers=new Map(),lastDist=0,moved=false;
 canvas.addEventListener('pointerdown',e=>{
   pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=false;
@@ -171,12 +301,16 @@ canvas.addEventListener('pointermove',e=>{
   const p=pointers.get(e.pointerId);
   const dx=e.clientX-p.x,dy=e.clientY-p.y;
   if(Math.abs(dx)+Math.abs(dy)>3)moved=true;
-  if(pointers.size===1){view.x-=dx/view.scale;view.y-=dy/view.scale;}
+  if(pointers.size===1){
+    const f=focal();
+    cam.yaw-=dx/f;
+    cam.pitch=Math.max(-1.45,Math.min(1.45,cam.pitch+dy/f));
+  }
   pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(pointers.size===2){
     const pts=[...pointers.values()];
     const dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
-    if(lastDist)zoomAt((pts[0].x+pts[1].x)/2,(pts[0].y+pts[1].y)/2,dist/lastDist);
+    if(lastDist)zoomBy(dist/lastDist);
     lastDist=dist;
   }
 });
@@ -187,24 +321,21 @@ function endPointer(e){
 }
 canvas.addEventListener('pointerup',endPointer);
 canvas.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);lastDist=0;});
-canvas.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.clientX,e.clientY,e.deltaY<0?1.12:0.89);},{passive:false});
-function zoomAt(cx,cy,f){
-  const[wx,wy]=screenToWorld(cx,cy);
-  view.scale=Math.max(0.15,Math.min(6,view.scale*f));
-  const[nx,ny]=worldToScreen(wx,wy);
-  view.x+=(nx-cx)/view.scale;view.y+=(ny-cy)/view.scale;
+canvas.addEventListener('wheel',e=>{e.preventDefault();zoomBy(e.deltaY<0?1.1:0.91);},{passive:false});
+function zoomBy(f){
+  cam.fov=Math.max(25*Math.PI/180,Math.min(95*Math.PI/180,cam.fov/f));
 }
 function tap(cx,cy){
-  let best=null,bd=18;
+  let best=null,bd=20;
   for(const s of stars){
-    const[sx,sy]=worldToScreen(s.x,s.y);
-    const d=Math.hypot(sx-cx,sy-cy);
+    if(s._sx==null)continue;
+    const d=Math.hypot(s._sx-cx,s._sy-cy);
     if(d<bd){bd=d;best=s;}
   }
   if(best)openCard(best);else closeCard();
 }
 
-// ═══ 星星详情卡 ═══════════════════════════════════════
+// ── 星星详情卡 ──
 function fmtWhen(ms){
   if(!ms)return'';
   const d=new Date(ms),n=new Date();
@@ -231,7 +362,7 @@ function openCard(s){
 }
 function closeCard(){selected=null;document.getElementById('card').classList.remove('show')}
 
-// ═══ 启动 ═══════════════════════════════════════════════
+// ── 启动 ──
 (async()=>{
   try{
     const d=await fetch('/api/starmap').then(r=>r.json());
@@ -243,9 +374,7 @@ function closeCard(){selected=null;document.getElementById('card').classList.rem
     }
     layout(d.stars);
     document.getElementById('count').textContent=d.total+' 颗记忆';
-    // 初始视野: 装下所有星云
-    let maxR=0;for(const k in clusters){const c=clusters[k];maxR=Math.max(maxR,Math.hypot(c.x,c.y)+c.r);}
-    view.scale=Math.min(1.6,Math.min(W,H)/(maxR*2.3+1));
+    if(clusters.length)lookAt(clusters[0].dir); // 睁眼先看见最大的星座
     requestAnimationFrame(draw);
     setTimeout(()=>{document.getElementById('hint').style.opacity=0},6000);
   }catch(e){
