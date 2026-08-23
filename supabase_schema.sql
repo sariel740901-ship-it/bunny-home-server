@@ -27,5 +27,24 @@ CREATE TABLE IF NOT EXISTS memories (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 4. 动态 — 你们共用的朋友圈(她发文字+图,他只发文字;likes 是 ['her','him'] 这样的数组)
+CREATE TABLE IF NOT EXISTS moments (
+  id SERIAL PRIMARY KEY,
+  author TEXT NOT NULL CHECK (author IN ('her', 'him')),
+  content TEXT NOT NULL DEFAULT '',
+  images JSONB DEFAULT '[]',
+  likes JSONB DEFAULT '[]',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. 动态的评论楼
+CREATE TABLE IF NOT EXISTS moment_comments (
+  id SERIAL PRIMARY KEY,
+  moment_id INTEGER REFERENCES moments(id) ON DELETE CASCADE,
+  author TEXT NOT NULL CHECK (author IN ('her', 'him')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- (曾经还有一张 settings 表存 system_prompt/温度/上下文轮数,已废弃删除 ——
 --  人设在 server.js 的 PERSONAS 里,上下文用环境变量 CONTEXT_BUDGET_TOKENS 控制)

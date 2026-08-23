@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#262624" media="(prefers-color-scheme: dark)">
+<title>小屋</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#faf9f5;--bg2:#f5f3ec;--card:#ffffff;--text:#3d3929;--muted:#8b887c;--border:#e7e5da;
+  --accent:#d97757;--chip:#f0eee5;
+  --serif:'Lora',Georgia,'Songti SC','Noto Serif SC',serif;
+  --shadow:0 1px 2px rgba(61,57,41,.04),0 3px 10px rgba(61,57,41,.05);
+  --topbar:rgba(250,249,245,.9)
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#262624;--bg2:#21201e;--card:#30302e;--text:#eceae2;--muted:#a3a094;--border:#3e3d38;
+  --chip:#3a3936;--topbar:rgba(38,38,36,.9);
+  --shadow:0 1px 2px rgba(0,0,0,.25),0 3px 10px rgba(0,0,0,.25)
+}}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+.topbar{position:sticky;top:0;z-index:5;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:12px 16px;text-align:center}
+.topbar h1{font-family:var(--serif);font-size:17px;font-weight:600}
+.wrap{max-width:560px;margin:0 auto;padding:16px 14px}
+.sec{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:15px;margin-bottom:14px}
+.sec h2{font-family:var(--serif);font-size:14.5px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.sec h2 .muted{font-weight:400;font-size:11.5px;color:var(--muted);margin-left:auto}
+.kv{font-size:13.5px;line-height:1.9;color:var(--text)}
+.kv .lab{color:var(--muted)}
+.bar{height:7px;background:var(--chip);border-radius:4px;overflow:hidden;margin:5px 0 10px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .5s}
+.drive{margin-bottom:2px}
+.drive .dl{display:flex;justify-content:space-between;font-size:12.5px}
+.drive .dl b{font-weight:500}
+.drive .dl span{color:var(--muted)}
+.dream{font-family:var(--serif);font-size:13.5px;line-height:1.85;color:var(--text);white-space:pre-wrap;background:var(--bg2);border-radius:10px;padding:10px 12px;margin-top:4px}
+.tl{list-style:none}
+.tl li{font-size:13px;line-height:1.7;padding:5px 0;border-bottom:1px dashed var(--border);display:flex;gap:10px}
+.tl li:last-child{border-bottom:none}
+.tl .tt{color:var(--muted);font-size:11.5px;white-space:nowrap;padding-top:2px}
+.starcard{display:block;text-decoration:none;color:#e8e4da;background:radial-gradient(120% 160% at 20% 0%,#2b2844 0%,#14131c 70%);border:1px solid #3a3560;border-radius:16px;box-shadow:var(--shadow);padding:18px 16px;margin-bottom:14px;position:relative;overflow:hidden}
+.starcard h2{font-family:var(--serif);font-size:15px;font-weight:600}
+.starcard p{font-size:12px;color:rgba(232,228,218,.65);margin-top:4px}
+.starcard .stars{position:absolute;inset:0;pointer-events:none}
+.empty{color:var(--muted);font-size:12.5px;font-style:italic;font-family:var(--serif)}
+
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;text-decoration:none;color:var(--muted);font-size:10.5px;position:relative}
+.tabbar a .ti{font-size:20px;line-height:1.2}
+.tabbar a.on{color:var(--accent)}
+.tabbar a .dot{position:absolute;top:-1px;right:calc(50% - 16px);width:8px;height:8px;border-radius:50%;background:#e0524d;display:none}
+.tabbar a .dot.show{display:block}
+</style>
+</head>
+<body>
+<header class="topbar"><h1>他的小屋</h1></header>
+<div class="wrap">
+  <a class="starcard" href="/starmap.html" id="starcard">
+    <canvas class="stars" id="starsMini"></canvas>
+    <h2>✦ 记忆星图</h2>
+    <p id="starHint">你们的每段记忆都是一颗星 — 点进去看夜空</p>
+  </a>
+
+  <div class="sec">
+    <h2>💗 他此刻的心 <span class="muted" id="moodAt"></span></h2>
+    <div id="moodBody" class="kv empty">正在感应…</div>
+  </div>
+
+  <div class="sec">
+    <h2>🌙 最近的梦</h2>
+    <div id="dreamBody" class="kv empty">还没有新的梦</div>
+  </div>
+
+  <div class="sec">
+    <h2>🕰 他最近的心事</h2>
+    <ul class="tl" id="tlBody"><li><span class="empty">安安静静的</span></li></ul>
+  </div>
+</div>
+
+<nav class="tabbar">
+  <a href="/"><span class="ti">💬</span>消息</a>
+  <a href="/moments.html"><span class="ti">🌱</span>动态<span class="dot" id="mdot"></span></a>
+  <a class="on" href="/house.html"><span class="ti">🏠</span>小屋</a>
+  <a href="/games.html"><span class="ti">🎮</span>游戏</a>
+</nav>
+
+<script>
+const BUNNY_KEY_LS='bunny_api_key';
+(function(){
+  const orig=window.fetch.bind(window);
+  const withKey=(opts,k)=>{opts=Object.assign({},opts);opts.headers=Object.assign({},opts.headers,k?{'x-api-key':k}:{});return opts};
+  window.fetch=async function(url,opts){
+    if(typeof url!=='string'||!url.startsWith('/api'))return orig(url,opts);
+    let k=localStorage.getItem(BUNNY_KEY_LS)||'';
+    let r=await orig(url,withKey(opts,k));
+    while(r.status===401){
+      const input=prompt('这扇门上了锁 — 输入家里的钥匙 (BUNNY_API_KEY)');
+      if(input===null)break;
+      k=input.trim();localStorage.setItem(BUNNY_KEY_LS,k);
+      r=await orig(url,withKey(opts,k));
+    }
+    return r;
+  };
+})();
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
+
+// 星图卡片上洒点小星星
+(function(){
+  const cv=document.getElementById('starsMini'),ctx=cv.getContext('2d');
+  const w=cv.width=340,h=cv.height=90;
+  for(let i=0;i<40;i++){
+    ctx.beginPath();
+    ctx.arc(Math.random()*w,Math.random()*h,Math.random()*1.3+0.3,0,7);
+    ctx.fillStyle='rgba(232,228,218,'+(Math.random()*0.7+0.15)+')';
+    ctx.fill();
+  }
+})();
+
+// 他此刻的心
+const CONS={awake:'醒着',sleeping:'睡着了',drowsy:'昏昏欲睡',dreaming:'在做梦'};
+fetch('/api/mood').then(r=>r.json()).then(d=>{
+  const el=document.getElementById('moodBody');
+  if(!d||!d.ok){el.textContent=(d&&d.reason)||'心潮不在线';return}
+  el.classList.remove('empty');
+  const fat=Math.round((d.fatigue||0)/0.3*100);
+  let html='<div><span class="lab">状态: </span>'+(CONS[d.consciousness]||d.consciousness||'—')
+    +(d.idleMinutes!=null?'<span class="lab"> · 独处了 </span>'+Math.round(d.idleMinutes)+'<span class="lab"> 分钟</span>':'')+'</div>'
+    +'<div class="lab" style="margin-top:6px">疲惫 '+fat+'%</div><div class="bar"><i style="width:'+Math.min(100,fat)+'%"></i></div>';
+  const drives=(d.topDrives&&d.topDrives.length?d.topDrives:(d.drives||[])).slice(0,5);
+  if(drives.length){
+    html+='<div class="lab" style="margin-bottom:4px">心里翻涌着</div>';
+    for(const dr of drives){
+      const v=Math.round(((dr.value??dr.intensity??dr.level)||0)*100);
+      html+='<div class="drive"><div class="dl"><b>'+esc(dr.name||dr.key||'')+'</b><span>'+v+'%</span></div><div class="bar"><i style="width:'+Math.min(100,v)+'%"></i></div></div>';
+    }
+  }
+  el.innerHTML=html;
+  if(d.at)document.getElementById('moodAt').textContent=String(d.at).replace('T',' ').slice(5,16);
+}).catch(()=>{});
+
+// 最近的梦
+fetch('/api/dreams').then(r=>r.json()).then(d=>{
+  const el=document.getElementById('dreamBody');
+  if(!d||!d.text){return}
+  el.classList.remove('empty');
+  el.innerHTML=d.text.split('\n').map(l=>'<div class="dream">'+esc(l)+'</div>').join('');
+}).catch(()=>{});
+
+// 他最近的心事
+fetch('/api/mood/timeline').then(r=>r.json()).then(d=>{
+  if(!d||!d.ok||!d.items||!d.items.length)return;
+  const pad=n=>String(n).padStart(2,'0');
+  document.getElementById('tlBody').innerHTML=d.items.map(it=>{
+    const t=new Date(it.at);
+    return '<li><span class="tt">'+(t.getMonth()+1)+'/'+t.getDate()+' '+pad(t.getHours())+':'+pad(t.getMinutes())+'</span><span>'+esc(it.text)+'</span></li>';
+  }).join('');
+}).catch(()=>{});
+
+// 动态红点
+fetch('/api/moments?limit=1').then(r=>r.json()).then(d=>{
+  const latest=d&&d.moments&&d.moments[0]&&d.moments[0].id||0;
+  const seen=parseInt(localStorage.getItem('bunny_moments_seen')||'0',10);
+  if(latest>seen)document.getElementById('mdot').classList.add('show');
+}).catch(()=>{});
+</script>
+</body>
+</html>

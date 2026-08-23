@@ -94,6 +94,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 .tfront .tp{font-size:10px;color:var(--muted);position:absolute;top:7px}
 .reading{font-family:var(--serif);font-size:14.5px;line-height:1.9;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin-top:14px;white-space:pre-wrap;animation:fadeUp .35s ease both}
 .hide{display:none !important}
+body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;text-decoration:none;color:var(--muted);font-size:10.5px;position:relative}
+.tabbar a .ti{font-size:20px;line-height:1.2}
+.tabbar a.on{color:var(--accent)}
+.tabbar a .dot{position:absolute;top:-1px;right:calc(50% - 16px);width:8px;height:8px;border-radius:50%;background:#e0524d;display:none}
+.tabbar a .dot.show{display:block}
 </style>
 </head>
 <body>
@@ -148,6 +155,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
     <div class="him hide" id="tarotThink"><div class="av">🐰</div><div class="hb thinking">他在看牌…</div></div>
   </div>
 </div>
+
+<nav class="tabbar">
+  <a href="/"><span class="ti">💬</span>消息</a>
+  <a href="/moments.html"><span class="ti">🌱</span>动态<span class="dot" id="mdot"></span></a>
+  <a href="/house.html"><span class="ti">🏠</span>小屋</a>
+  <a class="on" href="/games.html"><span class="ti">🎮</span>游戏</a>
+</nav>
 
 <script>
 // ═══ 门禁钥匙(和聊天页同一把) ═══
@@ -444,6 +458,13 @@ async function tarotRead(){
   box.textContent=(d&&d.say)||'(他盯着牌面出了会儿神……再抽一次?)';
   box.classList.remove('hide');
 }
+
+// 动态红点
+fetch('/api/moments?limit=1').then(r=>r.json()).then(d=>{
+  const latest=(d&&d.moments&&d.moments[0]&&d.moments[0].id)||0;
+  const seen=parseInt(localStorage.getItem('bunny_moments_seen')||'0',10);
+  if(latest>seen)document.getElementById('mdot').classList.add('show');
+}).catch(()=>{});
 </script>
 </body>
 </html>

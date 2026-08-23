@@ -89,6 +89,14 @@ body.hide-os .os{display:none}
 .composer:focus-within{border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}
 .input textarea{width:100%;padding:2px 6px;border:none;font-size:15px;resize:none;outline:none;background:transparent;color:var(--text);font-family:inherit;max-height:120px;line-height:1.6}
 .input textarea::placeholder{color:var(--muted)}
+/* 底部 tab: 消息/动态/小屋/游戏。打字时收起,别跟键盘打架 */
+.tabbar{display:flex;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 0 calc(6px + env(safe-area-inset-bottom));flex-shrink:0}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;text-decoration:none;color:var(--muted);font-size:10.5px;position:relative}
+.tabbar a .ti{font-size:20px;line-height:1.2}
+.tabbar a.on{color:var(--accent)}
+.tabbar a .dot{position:absolute;top:-1px;right:calc(50% - 16px);width:8px;height:8px;border-radius:50%;background:#e0524d;display:none}
+.tabbar a .dot.show{display:block}
+body.kb .tabbar{display:none}
 .crow{display:flex;align-items:center;gap:2px}
 .crow .sp{flex:1}
 .input .sendbtn{padding:7px 16px;background:var(--accent);color:#fff;border:none;border-radius:16px;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:transform .15s,background .2s;flex-shrink:0}
@@ -265,6 +273,12 @@ body.hide-os .os{display:none}
       </div>
     </div>
   </footer>
+  <nav class="tabbar" id="tabbar">
+    <a class="on" href="/"><span class="ti">💬</span>消息</a>
+    <a href="/moments.html"><span class="ti">🌱</span>动态<span class="dot" id="mdot"></span></a>
+    <a href="/house.html"><span class="ti">🏠</span>小屋</a>
+    <a href="/games.html"><span class="ti">🎮</span>游戏</a>
+  </nav>
 </div>
 
 <!-- 右侧拉框 -->
@@ -274,8 +288,6 @@ body.hide-os .os{display:none}
   <div class="side-item" onclick="toggleSide();toggleMood()">他此刻的心</div>
   <div class="side-item" onclick="toggleSide();toggleDrawer()">装扮小家</div>
   <div class="side-item" onclick="toggleSide();toggleCall()">语音通话</div>
-  <div class="side-item" onclick="location.href='/starmap.html'">记忆星图</div>
-  <div class="side-item" onclick="location.href='/games.html'">和他玩</div>
 </aside>
 
 <!-- 他的工具箱: 底部拉出(从 + 号进) -->
@@ -1139,6 +1151,18 @@ async function speakAsync(text){
   }catch(e){}
   speaking=!1;
 }
+
+// ═══ 底部 tab: 打字时收起 + 动态红点 ═══
+(function(){
+  const inp=document.getElementById('inp');
+  inp.addEventListener('focus',()=>document.body.classList.add('kb'));
+  inp.addEventListener('blur',()=>setTimeout(()=>document.body.classList.remove('kb'),150));
+  fetch('/api/moments?limit=1').then(r=>r.json()).then(d=>{
+    const latest=(d&&d.moments&&d.moments[0]&&d.moments[0].id)||0;
+    const seen=parseInt(localStorage.getItem('bunny_moments_seen')||'0',10);
+    if(latest>seen)document.getElementById('mdot').classList.add('show');
+  }).catch(()=>{});
+})();
 </script>
 </body>
 </html>
