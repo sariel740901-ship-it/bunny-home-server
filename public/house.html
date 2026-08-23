@@ -54,7 +54,7 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .pl-label.hot{fill:#d97f8e;font-weight:600}
 .thoughts{font-size:12.5px;color:var(--muted);padding-top:2px}
 .fold{max-height:0;overflow:hidden;transition:max-height .35s ease}
-.open .fold{max-height:420px}
+.open .fold{max-height:960px}
 .open .foldbtn .chev{transform:rotate(180deg)}
 /* 他的梦境 */
 .dream{background:var(--dream-bg);border:1px solid var(--dream-border);border-radius:12px;padding:11px 13px;margin-bottom:9px;cursor:pointer}
@@ -190,12 +190,13 @@ fetch('/api/mood').then(r=>r.json()).then(d=>{
     +(d.idleMinutes!=null?'<span class="lab"> · 独处了 </span>'+Math.round(d.idleMinutes)+'<span class="lab"> 分钟</span>':'')+'</div>'
     +'<div class="lab" style="margin-top:6px;font-size:12.5px">疲惫 '+fat+'%</div>'
     +'<div class="bar" style="margin-bottom:2px"><i style="width:'+Math.min(100,fat)+'%;background:#c9b8a8"></i></div>';
-  const tops=(d.topDrives&&d.topDrives.length?d.topDrives:(d.drives||[])).slice(0,6);
-  const all=(d.drives&&d.drives.length?d.drives:tops);
-  if(tops.length){
+  // 全量十二维,按强弱排 —— 上游 topDrives 只给前 4 条,不够看
+  const all=(d.drives&&d.drives.length?d.drives:(d.topDrives||[]));
+  const bars=[...all].sort((a,b)=>((b.value??b.intensity??0)-(a.value??a.intensity??0)));
+  if(bars.length){
     let html='';
     if(all.length>=6)html+='<div class="petal-wrap">'+petalSVG(all)+'</div>';
-    tops.forEach((dr,i)=>{
+    bars.forEach((dr,i)=>{
       const v=Math.round(((dr.value??dr.intensity??dr.level)||0)*100);
       html+='<div class="drive"><div class="dl"><b>'+esc(driveLabel(dr))+'</b><span>'+v+'%</span></div>'
         +'<div class="bar"><i style="width:'+Math.min(100,v)+'%;background:'+PASTEL[i%PASTEL.length]+'"></i></div></div>';
