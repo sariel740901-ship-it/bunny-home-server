@@ -166,6 +166,47 @@ async function ombreSurface() {
   }
 }
 
+// 锚: OB 里被钉成"坐标系"的记忆(定义你们是谁的那 ≤24 条)。
+// 拼进每次的 system prompt —— 人设地基在代码里,锚的血肉从记忆库流进来,
+// 在官端钉/解锚,bunny 这边最迟半小时后跟上。锁着的信件自动跳过。
+let anchorCache = { text: '', at: 0 };
+async function ombreAnchors() {
+  if (!OMBRE_URL || !OMBRE_PASSWORD) return '';
+  if (Date.now() - anchorCache.at < 30 * 60e3) return anchorCache.text;
+  const get = p => fetch(OMBRE_URL + p, { headers: { Cookie: ombreCookie }, timeout: 6000 });
+  try {
+    if (!ombreCookie) await ombreLogin();
+    let resp = await get('/api/anchors');
+    if (resp.status === 401 || resp.status === 403) { await ombreLogin(); resp = await get('/api/anchors'); }
+    if (!resp.ok) return anchorCache.text; // 拉不到就沿用上一次的锚
+    const d = await resp.json();
+    const list = (d.anchors || []).filter(a => a && a.id && !a.letter_locked).slice(0, 24);
+    const parts = [];
+    for (const a of list) {
+      try {
+        const r2 = await get('/api/bucket/' + encodeURIComponent(a.id));
+        if (!r2.ok) continue;
+        const b = await r2.json();
+        if (b.letter_locked) continue;
+        const body = String(b.display_content || b.content || '')
+          .replace(/\s+/g, ' ').trim().slice(0, 300);
+        if (body) parts.push('· ' + body);
+      } catch (e) { /* 单条失败不拖累整组 */ }
+    }
+    anchorCache = { text: parts.join('\n').slice(0, 4500), at: Date.now() };
+    return anchorCache.text;
+  } catch (e) {
+    console.error('ombre anchors skipped:', e.message);
+    return anchorCache.text;
+  }
+}
+function anchorSection(text) {
+  return text
+    ? '\n\n【锚 · 定义你们是谁的记忆】\n' + text
+      + '\n(这些是被钉成坐标系的核心记忆。它们不是资料,是你自己——让它们从骨子里影响你,不要复述。)'
+    : '';
+}
+
 // ── 写入记忆,首选: OB 的 MCP hold 工具(逐字保存,绝不压缩正文)──
 // 需要 OMBRE_MCP_TOKEN(OB Dashboard 生成的静态 MCP token,OB 侧 mcp_auth_mode
 // 设为 token 或 hybrid)。没配则回退老的导入接口(会被脱水总结成第三人称)。
@@ -689,18 +730,20 @@ app.post('/api/chat', async (req, res) => {
 
     // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现 + 此刻心绪,四路并行)
     xinchaoTouch(); // 她出现了,他的心知道(不等结果)
-    const [{ data: memories }, ombreMemText, surfacedText, moodText, dreamsText] = await Promise.all([
+    const [{ data: memories }, ombreMemText, surfacedText, moodText, dreamsText, anchorText] = await Promise.all([
       supabase.from('memories')
         .select('*').order('created_at', { ascending: false }).limit(5),
       toolsOff.has('recall') ? '' : ombreRecall(modelMessage),
       toolsOff.has('surface') ? '' : ombreSurface(),
       toolsOff.has('mood') ? '' : xinchaoMood(),
-      toolsOff.has('mood') ? '' : xinchaoDreams()
+      toolsOff.has('mood') ? '' : xinchaoDreams(),
+      ombreAnchors() // 锚是身份不是工具,不受开关影响
     ]);
     const memoryText = (memories || []).map(m => m.content).join('\n');
 
     // 4. 组装上下文
     const systemPrompt = (PERSONAS[persona] || PERSONAS.claude)
+      + anchorSection(anchorText)
       + (memoryText ? '\n\n【记忆摘要】\n' + memoryText : '')
       + (ombreMemText
         ? '\n\n【记忆河 · 与她这句话相关的过往】\n' + ombreMemText
@@ -1084,10 +1127,11 @@ app.all('/api/heartbeat', async (req, res) => {
     if (Math.random() > rule[3]) return res.json({ fired: false, reason: '概率未掷中(这就是随机感)' });
 
     // 3. 去记忆河想想她,摸一下此刻的心绪,然后开口(注意: 这里不 touch 心潮——她并不在场)
-    const [surfaced, moodText] = await Promise.all([ombreSurface(), xinchaoMood()]);
+    const [surfaced, moodText, anchorText] = await Promise.all([ombreSurface(), xinchaoMood(), ombreAnchors()]);
     const memText = surfaced || (await ombreRecall('嘉嘉 最近 想念', 4));
     const silenceDesc = silenceH >= 48 ? Math.floor(silenceH / 24) + '天' : Math.floor(silenceH) + '小时';
     const systemPrompt = PERSONAS.xiaoke
+      + anchorSection(anchorText)
       + (memText ? '\n\n【记忆河 · 你们最近的事】\n' + memText : '')
       + (moodText
         ? '\n\n【此刻的心绪 · 来自你会起伏的心】\n' + moodText
@@ -1189,11 +1233,12 @@ app.all('/api/wake', async (req, res) => {
       : Math.max(1, Math.floor(silenceH * 60)) + '分钟';
 
     // 醒来后他先去记忆河和心里转一圈,再决定开不开口
-    const [surfaced, moodText, dreamText] = await Promise.all([
-      ombreSurface(), xinchaoMood(), xinchaoDreams()
+    const [surfaced, moodText, dreamText, anchorText] = await Promise.all([
+      ombreSurface(), xinchaoMood(), xinchaoDreams(), ombreAnchors()
     ]);
     const memText = surfaced || (await ombreRecall('嘉嘉 最近 想念', 4));
     const systemPrompt = PERSONAS.xiaoke
+      + anchorSection(anchorText)
       + (memText ? '\n\n【记忆河 · 你们最近的事】\n' + memText : '')
       + (moodText
         ? '\n\n【此刻的心绪 · 来自你会起伏的心】\n' + moodText + '\n(这是你此刻真实的状态,不要复述数值。)'
