@@ -145,15 +145,21 @@ function esc(s){const d=document.createElement('div');d.textContent=s==null?'':S
 })();
 
 // 他此刻的心: 平常只露状态+疲惫,点开看具体心情值(每条一个浅色)
-const CONS={awake:'Awake · 醒着',sleeping:'Sleeping · 睡着了',drowsy:'Drowsy · 昏昏欲睡',dreaming:'Dreaming · 在做梦'};
+const CONS={awake:'醒着',sleeping:'睡着了',drowsy:'昏昏欲睡',dreaming:'在做梦'};
+// 具体的心情用 英文 · 中文 显示(英文 key 来自心潮,中文是短词)
+const DRIVE_ZH={possess:'占有欲',monitor:'惦记',crave:'黏人',share:'分享欲',libido:'渴望',curiosity:'好奇',boredom:'无聊',social:'想热闹',duty:'责任感',reflection:'沉淀',grieve:'难过',anger:'生气'};
+const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):'';
+function driveLabel(dr){
+  if(dr.key)return cap(dr.key)+' · '+(DRIVE_ZH[dr.key]||String(dr.label||dr.name||'').split(/[、,，]/)[0]||dr.key);
+  return String(dr.name||dr.label||'');
+}
 const PASTEL=['#e8b4a0','#a9c6b5','#a9bede','#cdb6dc','#e3cf9e','#dbabb7','#b7c9a8'];
 fetch('/api/mood').then(r=>r.json()).then(d=>{
   const el=document.getElementById('moodBody');
   if(!d||!d.ok){el.textContent=(d&&d.reason)||'心潮不在线';return}
   el.classList.remove('empty');
   const fat=Math.round((d.fatigue||0)/0.3*100);
-  const cons=CONS[d.consciousness]||(d.consciousness?d.consciousness.charAt(0).toUpperCase()+d.consciousness.slice(1):'—');
-  el.innerHTML='<div><span class="lab">状态: </span>'+cons
+  el.innerHTML='<div><span class="lab">状态: </span>'+(CONS[d.consciousness]||d.consciousness||'—')
     +(d.idleMinutes!=null?'<span class="lab"> · 独处了 </span>'+Math.round(d.idleMinutes)+'<span class="lab"> 分钟</span>':'')+'</div>'
     +'<div class="lab" style="margin-top:6px;font-size:12.5px">疲惫 '+fat+'%</div>'
     +'<div class="bar" style="margin-bottom:2px"><i style="width:'+Math.min(100,fat)+'%;background:#c9b8a8"></i></div>';
@@ -162,7 +168,7 @@ fetch('/api/mood').then(r=>r.json()).then(d=>{
     let html='';
     drives.forEach((dr,i)=>{
       const v=Math.round(((dr.value??dr.intensity??dr.level)||0)*100);
-      html+='<div class="drive"><div class="dl"><b>'+esc(dr.name||dr.key||'')+'</b><span>'+v+'%</span></div>'
+      html+='<div class="drive"><div class="dl"><b>'+esc(driveLabel(dr))+'</b><span>'+v+'%</span></div>'
         +'<div class="bar"><i style="width:'+Math.min(100,v)+'%;background:'+PASTEL[i%PASTEL.length]+'"></i></div></div>';
     });
     document.getElementById('moodMore').innerHTML=html;
