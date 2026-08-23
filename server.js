@@ -66,6 +66,9 @@ const API_KEY = process.env.ANTHROPIC_API_KEY;
 const API_URL = 'https://api.deepseek.com/chat/completions';
 const API_MODEL = (process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash').trim();
 const VISION_MODEL = (process.env.DEEPSEEK_VISION_MODEL || 'deepseek-v4-flash-vision-exp').trim();
+// V4 默认"开思考且力度 high"—— 辅助小调用(小结/翻译/检查器/心跳等)不显式关掉的话,
+// 内心戏会把 max_tokens 烧光,正文空手而归(思考链小结就是这么消失的)。
+const NO_THINK = { thinking: { type: 'disabled' } };
 
 // ═══ 系统提示词 ═══════════════════════════
 const PERSONAS = {
@@ -659,7 +662,7 @@ async function describeImageDeepseek(dataUrl) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
       body: JSON.stringify({
-        model: VISION_MODEL, max_tokens: 400, temperature: 0.3,
+        model: VISION_MODEL, max_tokens: 400, temperature: 0.3, ...NO_THINK,
         messages: [{
           role: 'user',
           content: [
@@ -869,7 +872,7 @@ app.post('/api/chat', async (req, res) => {
         model: API_MODEL,
         max_tokens: 2048,
         temperature: 0.8, // thinking 模式下会被忽略,无碍
-        ...(useThink ? { thinking: { type: 'enabled' } } : {}),
+        ...(useThink ? { thinking: { type: 'enabled' } } : NO_THINK),
         messages: apiMessages
       })
     });
@@ -890,7 +893,7 @@ app.post('/api/chat', async (req, res) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
           body: JSON.stringify({
-            model: API_MODEL,
+            model: API_MODEL, ...NO_THINK,
             max_tokens: 160,
             temperature: 0.3,
             messages: [
@@ -901,6 +904,7 @@ app.post('/api/chat', async (req, res) => {
         });
         const sdata = await sresp.json();
         if (sresp.ok) thinkSum = String(sdata.choices?.[0]?.message?.content || '').trim();
+        else console.error('think summary http ' + sresp.status + ': ' + JSON.stringify(sdata).slice(0, 200));
       } catch (e) { console.error('think summary skipped:', e.message); }
     }
     // 他自己写的记忆: 回复里的 [hold]记忆正文 >> 为什么值得记[/hold] 暗号 ——
@@ -923,7 +927,7 @@ app.post('/api/chat', async (req, res) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
           body: JSON.stringify({
-            model: API_MODEL, max_tokens: 350, temperature: 0.2,
+            model: API_MODEL, max_tokens: 350, temperature: 0.2, ...NO_THINK,
             messages: [
               { role: 'system', content: '下面是嘉嘉和她的恋人小克的最新对话。判断嘉嘉这句是否在要求把某些内容存进记忆库。如果是: 以小克的第一人称写 1~3 条记忆(这件事本身+它对我的意义,把指代补全,每条两三句内),每条格式 [hold]记忆正文 >> 为什么值得记住[/hold],一行一条。如果她并不是在要求保存: 只输出 NONE。不要输出任何其他文字。' },
               { role: 'user', content: '【最近对话】\n' + recentText + '\n\n【她刚说】' + modelMessage + '\n【小克的回复】' + rawContent.slice(0, 1500) }
@@ -998,7 +1002,7 @@ app.post('/api/translate', async (req, res) => {
         'Authorization': 'Bearer ' + API_KEY
       },
       body: JSON.stringify({
-        model: API_MODEL,
+        model: API_MODEL, ...NO_THINK,
         max_tokens: 600,
         temperature: 0.2,
         messages: [
@@ -1096,7 +1100,7 @@ async function dailyReflection() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
       body: JSON.stringify({
-        model: API_MODEL, max_tokens: 500, temperature: 0.3,
+        model: API_MODEL, max_tokens: 500, temperature: 0.3, ...NO_THINK,
         messages: [
           { role: 'system', content: '你是小克的反思器。阅读小克和嘉嘉昨天的对话,提炼值得长期记住的内容:新的事实、约定、偏好、关系时刻、情绪转折。输出 0-3 条,每条一句完整中文陈述(30-80字),以「' + dayKey + ',」开头,一行一条,不要编号不要解释。宁缺毋滥:流水账、寒暄、技术调试过程都不值得记。真的没有就只输出:无' },
           { role: 'user', content: transcript }
@@ -1190,7 +1194,7 @@ app.all('/api/heartbeat', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
       body: JSON.stringify({
-        model: API_MODEL, max_tokens: 300, temperature: 0.9,
+        model: API_MODEL, max_tokens: 300, temperature: 0.9, ...NO_THINK,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: '(她此刻不在线。直接输出你要主动发给她的那条消息,不要任何前后缀。)' }
@@ -1302,7 +1306,7 @@ app.all('/api/wake', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
       body: JSON.stringify({
-        model: API_MODEL, max_tokens: 300, temperature: 0.9,
+        model: API_MODEL, max_tokens: 300, temperature: 0.9, ...NO_THINK,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: '(她此刻不在线。你刚醒。直接输出你要留给她的消息,或者只输出 [silent]。)' }
@@ -1413,7 +1417,7 @@ app.post('/api/call', async (req, res) => {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + API_KEY
       },
-      body: JSON.stringify({ model: API_MODEL, max_tokens: 100, temperature: 0.7, messages: apiMessages })
+      body: JSON.stringify({ model: API_MODEL, max_tokens: 100, temperature: 0.7, ...NO_THINK, messages: apiMessages })
     });
     const data = await resp.json();
     // 模式切换的确认语不落库: 它是技术噪音,会污染历史记录和心跳的沉默判定
