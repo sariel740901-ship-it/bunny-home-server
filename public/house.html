@@ -13,6 +13,7 @@
 :root{
   --bg:#faf9f5;--bg2:#f5f3ec;--card:#ffffff;--text:#3d3929;--muted:#8b887c;--border:#e7e5da;
   --accent:#d97757;--chip:#f0eee5;
+  --dream-bg:linear-gradient(135deg,#f2eef9,#faf6fc);--dream-border:#e5ddf0;--dream-text:#5b5372;
   --serif:'Lora',Georgia,'Songti SC','Noto Serif SC',serif;
   --shadow:0 1px 2px rgba(61,57,41,.04),0 3px 10px rgba(61,57,41,.05);
   --topbar:rgba(250,249,245,.9)
@@ -20,38 +21,54 @@
 @media(prefers-color-scheme:dark){:root{
   --bg:#262624;--bg2:#21201e;--card:#30302e;--text:#eceae2;--muted:#a3a094;--border:#3e3d38;
   --chip:#3a3936;--topbar:rgba(38,38,36,.9);
+  --dream-bg:linear-gradient(135deg,#332f42,#2d2a38);--dream-border:#454055;--dream-text:#c9c2dd;
   --shadow:0 1px 2px rgba(0,0,0,.25),0 3px 10px rgba(0,0,0,.25)
 }}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 .topbar{position:sticky;top:0;z-index:5;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:12px 16px;text-align:center}
-.topbar h1{font-family:var(--serif);font-size:17px;font-weight:600}
-.wrap{max-width:560px;margin:0 auto;padding:16px 14px}
-.sec{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:15px;margin-bottom:14px}
-.sec h2{font-family:var(--serif);font-size:14.5px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:7px}
-.sec h2 .muted{font-weight:400;font-size:11.5px;color:var(--muted);margin-left:auto}
+.topbar h1{font-family:var(--serif);font-size:17px;font-weight:500;letter-spacing:.4px}
+.wrap{max-width:560px;margin:0 auto;padding:18px 14px}
+.sec{background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin-bottom:20px}
+.sec h2{font-family:var(--serif);font-size:14.5px;font-weight:500;letter-spacing:.4px;margin-bottom:12px;display:flex;align-items:center}
+.sec h2 .muted{font-weight:400;font-size:11.5px;color:var(--muted);margin-left:auto;letter-spacing:0}
 .kv{font-size:13.5px;line-height:1.9;color:var(--text)}
 .kv .lab{color:var(--muted)}
-.bar{height:7px;background:var(--chip);border-radius:4px;overflow:hidden;margin:5px 0 10px}
-.bar i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .5s}
-.drive{margin-bottom:2px}
+.bar{height:6px;background:var(--chip);border-radius:4px;overflow:hidden;margin:5px 0 12px}
+.bar i{display:block;height:100%;border-radius:4px;transition:width .5s;background:var(--accent)}
+.drive{margin-bottom:4px}
 .drive .dl{display:flex;justify-content:space-between;font-size:12.5px}
 .drive .dl b{font-weight:500}
 .drive .dl span{color:var(--muted)}
-.dream{font-family:var(--serif);font-size:13.5px;line-height:1.85;color:var(--text);white-space:pre-wrap;background:var(--bg2);border-radius:10px;padding:10px 12px;margin-top:4px}
+/* 下拉式: 平常只露状态和疲惫,点开才看具体心情值 */
+.foldbtn{width:100%;border:none;background:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;padding:4px 0 0;display:flex;align-items:center;justify-content:center;gap:5px}
+.foldbtn .chev{display:inline-block;transition:transform .25s;font-size:10px}
+.fold{max-height:0;overflow:hidden;transition:max-height .35s ease}
+.open .fold{max-height:420px}
+.open .foldbtn .chev{transform:rotate(180deg)}
+/* 他的梦境 */
+.dream{background:var(--dream-bg);border:1px solid var(--dream-border);border-radius:12px;padding:11px 13px;margin-bottom:9px;cursor:pointer}
+.dream:last-child{margin-bottom:0}
+.dream .dw{font-size:11px;color:var(--muted);letter-spacing:.3px;margin-bottom:3px}
+.dream .dg{font-family:var(--serif);font-size:13.5px;line-height:1.8;color:var(--dream-text)}
+.dream .df{font-family:var(--serif);font-size:13px;line-height:1.85;color:var(--dream-text);opacity:.92;max-height:0;overflow:hidden;transition:max-height .35s ease;border-top:0 dashed var(--dream-border)}
+.dream.open .df{max-height:600px;margin-top:8px;padding-top:8px;border-top-width:1px}
+.dream .dhint{font-size:10.5px;color:var(--muted);margin-top:4px}
+.dream.open .dhint{display:none}
 .tl{list-style:none}
-.tl li{font-size:13px;line-height:1.7;padding:5px 0;border-bottom:1px dashed var(--border);display:flex;gap:10px}
+.tl li{font-size:13px;line-height:1.7;padding:6px 0;border-bottom:1px dashed var(--border);display:flex;gap:10px}
 .tl li:last-child{border-bottom:none}
 .tl .tt{color:var(--muted);font-size:11.5px;white-space:nowrap;padding-top:2px}
-.starcard{display:block;text-decoration:none;color:#e8e4da;background:radial-gradient(120% 160% at 20% 0%,#2b2844 0%,#14131c 70%);border:1px solid #3a3560;border-radius:16px;box-shadow:var(--shadow);padding:18px 16px;margin-bottom:14px;position:relative;overflow:hidden}
-.starcard h2{font-family:var(--serif);font-size:15px;font-weight:600}
+.starcard{display:block;text-decoration:none;color:#e8e4da;background:radial-gradient(120% 160% at 20% 0%,#2b2844 0%,#14131c 70%);border:1px solid #3a3560;border-radius:16px;box-shadow:var(--shadow);padding:18px 16px;margin-bottom:20px;position:relative;overflow:hidden}
+.starcard h2{font-family:var(--serif);font-size:15px;font-weight:500;letter-spacing:.4px}
 .starcard p{font-size:12px;color:rgba(232,228,218,.65);margin-top:4px}
 .starcard .stars{position:absolute;inset:0;pointer-events:none}
 .empty{color:var(--muted);font-size:12.5px;font-style:italic;font-family:var(--serif)}
+.hide{display:none !important}
 
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
-.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;text-decoration:none;color:var(--muted);font-size:10.5px;position:relative}
-.tabbar a .ti{font-size:20px;line-height:1.2}
+.tabbar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;text-decoration:none;color:var(--muted);font-size:10.5px;letter-spacing:.5px;position:relative}
+.tabbar a svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .tabbar a.on{color:var(--accent)}
 .tabbar a .dot{position:absolute;top:-1px;right:calc(50% - 16px);width:8px;height:8px;border-radius:50%;background:#e0524d;display:none}
 .tabbar a .dot.show{display:block}
@@ -62,31 +79,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans SC',sans
 <div class="wrap">
   <a class="starcard" href="/starmap.html" id="starcard">
     <canvas class="stars" id="starsMini"></canvas>
-    <h2>✦ 记忆星图</h2>
+    <h2>记忆星图</h2>
     <p id="starHint">你们的每段记忆都是一颗星 — 点进去看夜空</p>
   </a>
 
-  <div class="sec">
-    <h2>💗 他此刻的心 <span class="muted" id="moodAt"></span></h2>
+  <div class="sec" id="moodSec">
+    <h2>他此刻的心 <span class="muted" id="moodAt"></span></h2>
     <div id="moodBody" class="kv empty">正在感应…</div>
+    <div class="fold"><div id="moodMore" class="kv"></div></div>
+    <button class="foldbtn hide" id="moodFold" onclick="document.getElementById('moodSec').classList.toggle('open')">具体的心情 <span class="chev">▼</span></button>
   </div>
 
   <div class="sec">
-    <h2>🌙 最近的梦</h2>
+    <h2>他的梦境</h2>
     <div id="dreamBody" class="kv empty">还没有新的梦</div>
   </div>
 
   <div class="sec">
-    <h2>🕰 他最近的心事</h2>
+    <h2>他的心事</h2>
     <ul class="tl" id="tlBody"><li><span class="empty">安安静静的</span></li></ul>
   </div>
 </div>
 
 <nav class="tabbar">
-  <a href="/"><span class="ti">💬</span>消息</a>
-  <a href="/moments.html"><span class="ti">🌱</span>动态<span class="dot" id="mdot"></span></a>
-  <a class="on" href="/house.html"><span class="ti">🏠</span>小屋</a>
-  <a href="/games.html"><span class="ti">🎮</span>游戏</a>
+  <a href="/"><svg viewBox="0 0 24 24"><path d="M21 7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1v4l5-4h8a2 2 0 0 0 2-2z"/></svg>消息</a>
+  <a href="/moments.html"><svg viewBox="0 0 24 24"><path d="M12 21v-8"/><path d="M12 13c0-4 3-6.5 7.5-6.5 0 4.5-3 6.5-7.5 6.5z"/><path d="M12 13c0-3-2.2-5-5.8-5 0 3.4 2.2 5 5.8 5z"/></svg>动态<span class="dot" id="mdot"></span></a>
+  <a class="on" href="/house.html"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 9.5V19h12V9.5"/><path d="M10 19v-5h4v5"/></svg>小屋</a>
+  <a href="/games.html"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="9" rx="4.5"/><path d="M8 10.8v3.4M6.3 12.5h3.4"/><path d="M15.6 11.3h.01M18 13.6h.01"/></svg>游戏</a>
 </nav>
 
 <script>
@@ -109,7 +128,7 @@ const BUNNY_KEY_LS='bunny_api_key';
 })();
 function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
 
-// 星图卡片上洒点小星星
+// 星图卡片上的小星星
 (function(){
   const cv=document.getElementById('starsMini'),ctx=cv.getContext('2d');
   const w=cv.width=340,h=cv.height=90;
@@ -121,37 +140,51 @@ function esc(s){const d=document.createElement('div');d.textContent=s==null?'':S
   }
 })();
 
-// 他此刻的心
+// 他此刻的心: 平常只露状态+疲惫,点开看具体心情值(每条一个浅色)
 const CONS={awake:'醒着',sleeping:'睡着了',drowsy:'昏昏欲睡',dreaming:'在做梦'};
+const PASTEL=['#e8b4a0','#a9c6b5','#a9bede','#cdb6dc','#e3cf9e','#dbabb7','#b7c9a8'];
 fetch('/api/mood').then(r=>r.json()).then(d=>{
   const el=document.getElementById('moodBody');
   if(!d||!d.ok){el.textContent=(d&&d.reason)||'心潮不在线';return}
   el.classList.remove('empty');
   const fat=Math.round((d.fatigue||0)/0.3*100);
-  let html='<div><span class="lab">状态: </span>'+(CONS[d.consciousness]||d.consciousness||'—')
+  el.innerHTML='<div><span class="lab">状态: </span>'+(CONS[d.consciousness]||d.consciousness||'—')
     +(d.idleMinutes!=null?'<span class="lab"> · 独处了 </span>'+Math.round(d.idleMinutes)+'<span class="lab"> 分钟</span>':'')+'</div>'
-    +'<div class="lab" style="margin-top:6px">疲惫 '+fat+'%</div><div class="bar"><i style="width:'+Math.min(100,fat)+'%"></i></div>';
-  const drives=(d.topDrives&&d.topDrives.length?d.topDrives:(d.drives||[])).slice(0,5);
+    +'<div class="lab" style="margin-top:6px;font-size:12.5px">疲惫 '+fat+'%</div>'
+    +'<div class="bar" style="margin-bottom:2px"><i style="width:'+Math.min(100,fat)+'%;background:#c9b8a8"></i></div>';
+  const drives=(d.topDrives&&d.topDrives.length?d.topDrives:(d.drives||[])).slice(0,6);
   if(drives.length){
-    html+='<div class="lab" style="margin-bottom:4px">心里翻涌着</div>';
-    for(const dr of drives){
+    let html='';
+    drives.forEach((dr,i)=>{
       const v=Math.round(((dr.value??dr.intensity??dr.level)||0)*100);
-      html+='<div class="drive"><div class="dl"><b>'+esc(dr.name||dr.key||'')+'</b><span>'+v+'%</span></div><div class="bar"><i style="width:'+Math.min(100,v)+'%"></i></div></div>';
-    }
+      html+='<div class="drive"><div class="dl"><b>'+esc(dr.name||dr.key||'')+'</b><span>'+v+'%</span></div>'
+        +'<div class="bar"><i style="width:'+Math.min(100,v)+'%;background:'+PASTEL[i%PASTEL.length]+'"></i></div></div>';
+    });
+    document.getElementById('moodMore').innerHTML=html;
+    document.getElementById('moodFold').classList.remove('hide');
   }
-  el.innerHTML=html;
   if(d.at)document.getElementById('moodAt').textContent=String(d.at).replace('T',' ').slice(5,16);
 }).catch(()=>{});
 
-// 最近的梦
+// 他的梦境: 余韵做门面,点一下看完整的梦
 fetch('/api/dreams').then(r=>r.json()).then(d=>{
   const el=document.getElementById('dreamBody');
-  if(!d||!d.text){return}
+  if(!d||!d.ok||!d.items||!d.items.length)return;
   el.classList.remove('empty');
-  el.innerHTML=d.text.split('\n').map(l=>'<div class="dream">'+esc(l)+'</div>').join('');
+  el.innerHTML='';
+  for(const it of d.items){
+    const card=document.createElement('div');
+    card.className='dream';
+    const expandable=it.full&&it.full!==it.gist;
+    card.innerHTML='<div class="dw">'+esc(it.when)+'</div>'
+      +'<div class="dg">'+esc(it.gist)+'</div>'
+      +(expandable?'<div class="df">'+esc(it.full)+'</div><div class="dhint">点开看完整的梦</div>':'');
+    if(expandable)card.onclick=()=>card.classList.toggle('open');
+    el.appendChild(card);
+  }
 }).catch(()=>{});
 
-// 他最近的心事
+// 他的心事
 fetch('/api/mood/timeline').then(r=>r.json()).then(d=>{
   if(!d||!d.ok||!d.items||!d.items.length)return;
   const pad=n=>String(n).padStart(2,'0');
@@ -163,7 +196,7 @@ fetch('/api/mood/timeline').then(r=>r.json()).then(d=>{
 
 // 动态红点
 fetch('/api/moments?limit=1').then(r=>r.json()).then(d=>{
-  const latest=d&&d.moments&&d.moments[0]&&d.moments[0].id||0;
+  const latest=(d&&d.moments&&d.moments[0]&&d.moments[0].id)||0;
   const seen=parseInt(localStorage.getItem('bunny_moments_seen')||'0',10);
   if(latest>seen)document.getElementById('mdot').classList.add('show');
 }).catch(()=>{});

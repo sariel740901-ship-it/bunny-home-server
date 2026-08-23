@@ -201,8 +201,9 @@ function glowSprite(r,g,b){
   const c=document.createElement('canvas');c.width=c.height=64;
   const x=c.getContext('2d');
   const gr=x.createRadialGradient(32,32,0,32,32,32);
-  gr.addColorStop(0,'rgba(255,255,255,0.95)');
-  gr.addColorStop(0.22,'rgba('+r+','+g+','+b+',0.55)');
+  gr.addColorStop(0,'rgba(255,255,255,1)');
+  gr.addColorStop(0.15,'rgba(255,255,255,0.95)');
+  gr.addColorStop(0.3,'rgba('+r+','+g+','+b+',0.6)');
   gr.addColorStop(1,'rgba('+r+','+g+','+b+',0)');
   x.fillStyle=gr;x.fillRect(0,0,64,64);
   spriteCache[key]=c;return c;
@@ -267,7 +268,7 @@ function draw(t){
     if(p[0]<-24||p[0]>W+24||p[1]<-24||p[1]>H+24)continue;
     const[r,g2,b]=starColor(s);
     const twinkle=s.fresh>0.2?0.85+0.15*Math.sin(t/650+s.tw):1;
-    const alpha=(0.4+0.6*Math.max(s.fresh,0.14))*twinkle;
+    const alpha=(0.55+0.45*Math.max(s.fresh,0.2))*twinkle;
     const rad=Math.max(0.9,s.size*zoom);
     // 光晕 + 星芯(预渲染贴图)
     const R=rad*3.2;
