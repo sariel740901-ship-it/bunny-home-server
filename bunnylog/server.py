@@ -77,9 +77,11 @@ mcp = FastMCP(
     - bunny_sessions: 看那边有哪些会话、各聊了多少条。
     - bunny_read: 按会话翻原文(时间正序,可翻旧页)。
     - bunny_search: 按关键词跨会话搜她(或那边的你)说过的话。
+    - bunny_moments: 翻你们的朋友圈「动态」—— 她发的日常、那边的你
+      自发醒来时发的碎碎念,和彼此的点赞评论。
 
     翻到的是逐字档案 —— 当回忆读,别当成她此刻在说;引用时自然一点,
-    像"你那天在家里说过…",别念数据库。
+    像"你那天在家里说过…""你朋友圈里发的那张晚霞…",别念数据库。
     """,
 )
 
@@ -151,6 +153,48 @@ async def bunny_search(keyword: str, limit: int = 20) -> str:
         lines.append(f"[{_bj_time(r.get('created_at', ''))} · {names.get(r.get('session_id'), r.get('session_id'))}] "
                      f"{_who(r.get('role', ''))}: {text}")
     return f"含「{keyword}」的消息({len(rows)} 条,新→旧):\n" + "\n".join(lines)
+
+
+def _m_who(author: str) -> str:
+    return "小克" if author == "him" else "嘉嘉"
+
+
+@mcp.tool
+async def bunny_moments(limit: int = 10, before_id: int = 0) -> str:
+    """翻你们在 bunny 家的朋友圈「动态」(新→旧,默认 10 条,最多 30)。
+    她发的日常配图、那边的你半夜自发醒来发的碎碎念、彼此的点赞和评论楼都在。
+    翻更早的: 把上次返回里最小的 #编号 填进 before_id。"""
+    limit = max(1, min(int(limit), 30))
+    params = {"select": "id,author,content,images,likes,created_at", "order": "id.desc", "limit": str(limit)}
+    if before_id:
+        params["id"] = f"lt.{int(before_id)}"
+    rows = _rest("moments", params)
+    if not rows:
+        return "朋友圈里(这之前)还没有动态。"
+    ids = ",".join(str(r["id"]) for r in rows)
+    comments = _rest("moment_comments", {
+        "select": "moment_id,author,content",
+        "moment_id": f"in.({ids})",
+        "order": "id.asc",
+    })
+    by_moment: dict = {}
+    for c in comments:
+        by_moment.setdefault(c.get("moment_id"), []).append(c)
+    blocks = []
+    for r in rows:
+        imgs = r.get("images") or []
+        likes = r.get("likes") or []
+        body = str(r.get("content") or "").strip() or "(没写字)"
+        if imgs:
+            body += f" [配图 {len(imgs)} 张]"
+        lines = [f"#{r['id']} [{_bj_time(r.get('created_at', ''))}] {_m_who(r.get('author', ''))}: {body}"]
+        if likes:
+            lines.append("  ❤ " + "、".join(_m_who(x) for x in likes))
+        for c in by_moment.get(r["id"], []):
+            lines.append(f"  ↳ {_m_who(c.get('author', ''))}: {str(c.get('content') or '')[:200]}")
+        blocks.append("\n".join(lines))
+    tail = f"\n\n翻更早: bunny_moments(before_id={rows[-1]['id']})"
+    return f"你们的朋友圈(新→旧,{len(rows)} 条):\n\n" + "\n\n".join(blocks) + tail
 
 
 # ── 门禁 + 启动(咱家标配)──────────────────────────────
