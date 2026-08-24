@@ -566,6 +566,13 @@ app.get('/api/tools', (req, res) => {
     { key: 'stickers', name: '表情包', desc: listStickers().length + ' 张可用', on: listStickers().length > 0, switch: true },
     { key: 'voice', name: '声音', desc: '给新消息挂可点播的语音条(默认关,省额度;通话不受影响)', on: !!process.env.XI_API_KEY, switch: true },
     { key: 'translate', name: '翻译', desc: '外文回复一键看中文', on: !!API_KEY },
+    (() => { // 醒来引擎的脉搏: 引擎每 ~5 分钟来报到一次,超过 15 分钟没来就该去家里看看了
+      const min = lastEnginePoll ? Math.round((Date.now() - lastEnginePoll) / 60e3) : -1;
+      const desc = min < 0 ? '引擎还没来报到过(家里电脑开着吗? 服务端刚重启的话等几分钟)'
+        : min <= 1 ? '引擎刚来过,节律在走'
+        : '引擎 ' + min + ' 分钟前来过' + (min > 15 ? ' — 可能失联了,去家里 docker logs bunny-wakeup 看看' : ',节律在走');
+      return { key: 'wakeup', name: '自发醒来', desc, on: min >= 0 && min <= 15 };
+    })(),
     { key: 'heartbeat', name: '心跳留言', desc: '你沉默太久时他主动留言', on: !!HEARTBEAT_TOKEN },
     { key: 'bark', name: '锁屏推送', desc: '留言同步推到手机锁屏 (Bark)', on: !!process.env.BARK_URL },
     { key: 'stackchan', name: '小方块', desc: '桌上的 StackChan 替他开口', on: !!process.env.STACKCHAN_ANNOUNCE_URL },
@@ -1636,11 +1643,13 @@ async function herRecentPresence() {
   return { tail: tail || [], silenceH, proactive };
 }
 
+let lastEnginePoll = 0; // 醒来引擎上次来访(戳 /api/wake 或拉 /api/wake/status 都算报到)
 const seenActivations = []; // 幂等: 同一个醒来机会最多兑现一次(引擎重试不会翻倍)
 app.all('/api/wake', async (req, res) => {
   if (!HEARTBEAT_TOKEN || req.query.token !== HEARTBEAT_TOKEN) {
     return res.status(403).json({ error: 'bad token' });
   }
+  lastEnginePoll = Date.now();
   try {
     const activationId = String(req.query.activationId || '').slice(0, 64) || ('wk_' + Date.now());
     if (seenActivations.includes(activationId)) {
@@ -1745,6 +1754,7 @@ app.get('/api/wake/status', async (req, res) => {
   if (!HEARTBEAT_TOKEN || req.query.token !== HEARTBEAT_TOKEN) {
     return res.status(403).json({ error: 'bad token' });
   }
+  lastEnginePoll = Date.now();
   try {
     const { silenceH, proactive } = await herRecentPresence();
     res.json({
