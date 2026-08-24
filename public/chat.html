@@ -554,8 +554,22 @@ async function loadTools(){
       d.appendChild(b);d.appendChild(td);
       if(t.switch&&t.on){
         const lb=document.createElement('label');lb.className='tg tg-sm';
-        const ck=document.createElement('input');ck.type='checkbox';ck.checked=toolOn(t.key);
-        ck.onchange=()=>{decor.tools=decor.tools||{};decor.tools[t.key]=ck.checked;saveDecor();};
+        const ck=document.createElement('input');ck.type='checkbox';
+        if(t.remote==='wake'){
+          // 服务端开关: 引擎是从外面敲门的,得在服务端真正拦住
+          ck.checked=t.state!==!1;
+          ck.onchange=async()=>{
+            ck.disabled=!0;
+            try{
+              const r=await fetch('/api/wake/switch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:ck.checked})});
+              if(!r.ok)throw 0;
+            }catch(e){ck.checked=!ck.checked;alert('开关没拨动 — flags 表可能还没建(跑一下 supabase_schema.sql 里第 6 段)');}
+            ck.disabled=!1;
+          };
+        }else{
+          ck.checked=toolOn(t.key);
+          ck.onchange=()=>{decor.tools=decor.tools||{};decor.tools[t.key]=ck.checked;saveDecor();};
+        }
         const i=document.createElement('i');
         lb.appendChild(ck);lb.appendChild(i);d.appendChild(lb);
       }else{
