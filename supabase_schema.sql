@@ -12,7 +12,9 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS messages (
   id SERIAL PRIMARY KEY,
   session_id INTEGER REFERENCES sessions(id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  -- role 不设 CHECK: 除了 user/assistant,每日反思用隐形的 reflection 行盖章
+  -- (老库解锁: ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_role_check;)
+  role TEXT NOT NULL,
   content TEXT NOT NULL,
   visible BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()

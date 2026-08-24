@@ -1690,10 +1690,12 @@ async function dailyReflection() {
   // 无论有没有收获都盖章,免得整夜重试
   const anySession = convo && convo[0] && convo[0].session_id;
   if (anySession) {
-    await supabase.from('messages').insert({
+    const { error: stampErr } = await supabase.from('messages').insert({
       session_id: anySession, role: 'reflection', content: dayKey,
       visible: false, created_at: new Date().toISOString()
     });
+    // 盖章失败必须喊出来 —— 章盖不上反思就会每小时重复消化,记忆库长重复条目
+    if (stampErr) console.error('reflection stamp FAILED (role 约束没解开?):', stampErr.message);
   }
   return { day: dayKey, messages: (convo || []).length, held };
 }
