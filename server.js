@@ -1022,12 +1022,26 @@ app.delete('/api/books/:id', async (req, res) => {
 app.get('/api/books/:id/notes', async (req, res) => {
   try {
     const { data, error } = await supabase.from('book_notes')
-      .select('id,author,anchor,pos,content,created_at')
+      .select('id,author,anchor,pos,parent_id,content,created_at')
       .eq('book_id', parseInt(req.params.id, 10))
       .order('pos', { ascending: true }).order('id', { ascending: true });
     if (error) return res.json([]); // 表没建时安静返回空
     res.json(data || []);
   } catch (e) { res.json([]); }
+});
+
+// 她回复某条批注(官端翻批注时会看到,还能接着回)
+app.post('/api/books/:id/notes/reply', async (req, res) => {
+  try {
+    const noteId = parseInt(req.body.note_id, 10);
+    const content = String(req.body.content || '').trim().slice(0, 500);
+    if (!content || !noteId) return res.status(400).json({ error: 'empty' });
+    const { data, error } = await supabase.from('book_notes')
+      .insert({ book_id: parseInt(req.params.id, 10), author: 'her', parent_id: noteId, content, pos: -1, anchor: '' })
+      .select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, note: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // 靠在一起读: 聊的对象是"此刻这一页",不是书评
