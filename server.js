@@ -302,6 +302,36 @@ async function ombreHold(text) {
   }
 }
 
+// ── 记忆兜底: 存不上先攒进 pending_holds,记忆库回来自动补写 ──
+// (建表 SQL 见 supabase_schema.sql;表没建时兜底失效但不报错,只丢日志)
+async function holdOrQueue(content, why, meaning) {
+  const ok = OMBRE_MCP_TOKEN
+    ? await ombreHoldVerbatim(content, why, meaning)
+    : await ombreHold(content + (meaning ? '\n为什么记得: ' + meaning : ''));
+  if (ok) return 'saved';
+  const { error } = await supabase.from('pending_holds')
+    .insert({ content, why: why || '', meaning: meaning || '' });
+  if (error) { console.error('pending hold queue failed:', error.message); return 'lost'; }
+  return 'queued';
+}
+let lastDrainTry = 0; // 补写节流阀(聊天和自发醒来共用)
+async function drainPendingHolds() {
+  const { data: rows } = await supabase.from('pending_holds')
+    .select('*').order('id', { ascending: true }).limit(5);
+  if (!rows || !rows.length) return;
+  for (const r of rows) {
+    const ok = OMBRE_MCP_TOKEN
+      ? await ombreHoldVerbatim(r.content, r.why || '', r.meaning || '')
+      : await ombreHold(r.content + (r.meaning ? '\n为什么记得: ' + r.meaning : ''));
+    if (ok) {
+      await supabase.from('pending_holds').delete().eq('id', r.id);
+    } else {
+      await supabase.from('pending_holds').update({ tries: (r.tries || 0) + 1 }).eq('id', r.id);
+      break; // 记忆库还没回来,别连着撞
+    }
+  }
+}
+
 // ═══ 心潮 · 他会起伏的心 ══════════════════
 // 家里电脑上的动态心智(驱动力/疲惫/梦境余韵),她不在时也在结算。
 // 需要环境变量: XINCHAO_URL (如 https://xinchao.jiakeparents.top)、XINCHAO_TOKEN (SERVICE_TOKEN)。
@@ -1282,6 +1312,11 @@ app.post('/api/chat', async (req, res) => {
       lastReflectTry = Date.now();
       dailyReflection().catch(e => console.error('reflection(piggyback) skipped:', e.message));
     }
+    // 2.7 补写顺风车: 之前没存上的记忆,趁记忆库可能回来了补写(每 10 分钟最多试一轮)
+    if (Date.now() - lastDrainTry > 10 * 60e3) {
+      lastDrainTry = Date.now();
+      drainPendingHolds().catch(e => console.error('hold drain skipped:', e.message));
+    }
 
     // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现 + 此刻心绪,四路并行)
     xinchaoTouch(); // 她出现了,他的心知道(不等结果)
@@ -1478,22 +1513,22 @@ app.post('/api/chat', async (req, res) => {
       } catch (e) { console.error('hold backstop skipped:', e.message); }
     }
 
-    let modelHoldSaved = null;
+    let heldOk = 0, heldQueued = 0, heldLost = 0;
     if (modelHoldItems.length && !toolsOff.has('hold')) {
       const today2 = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
-      modelHoldSaved = true;
       for (const it of modelHoldItems.slice(0, 3)) {
-        const ok = OMBRE_MCP_TOKEN
-          ? await ombreHoldVerbatim(it.content, today2 + ' 她在bunny的家里让我记下的', it.meaning)
-          : await ombreHold(today2 + ' (在bunny的家里记下) ' + it.content + (it.meaning ? '\n为什么记得: ' + it.meaning : ''));
-        modelHoldSaved = modelHoldSaved && ok;
+        const r = await holdOrQueue(it.content, today2 + ' 她在bunny的家里让我记下的', it.meaning);
+        if (r === 'saved') heldOk++;
+        else if (r === 'queued') heldQueued++;
+        else heldLost++;
       }
     }
 
     // 本轮真实用到的工具,给界面一行小标记(尤其记忆有没有写进去,一眼可见)
     const used = [];
-    if (modelHoldSaved === true) used.push('记忆:已写入 ' + Math.min(modelHoldItems.length, 3) + ' 条');
-    if (modelHoldSaved === false) used.push('记忆:没写成,记忆库不在线');
+    if (heldOk) used.push('记忆:已写入 ' + heldOk + ' 条');
+    if (heldQueued) used.push('记忆:暂存 ' + heldQueued + ' 条,记忆库回来自动补写');
+    if (heldLost) used.push('记忆:没写成,记忆库不在线');
     if (ombreMemText) used.push('记忆河');
     if (surfacedText) used.push('自然浮现');
     if (moodText) used.push('心潮');
@@ -1647,10 +1682,8 @@ async function dailyReflection() {
       const lines = text.split('\n').map(l => l.replace(/^[-·*\d.、\s]+/, '').trim())
         .filter(l => l.length >= 15).slice(0, 3);
       for (const line of lines) {
-        const ok = OMBRE_MCP_TOKEN
-          ? await ombreHoldVerbatim(line, '每日反思 · bunny家')
-          : await ombreHold(line);
-        if (ok) held++;
+        const r = await holdOrQueue(line, '每日反思 · bunny家', '');
+        if (r === 'saved' || r === 'queued') held++;
       }
     }
   }
@@ -1823,6 +1856,11 @@ app.all('/api/wake', async (req, res) => {
     if (Date.now() - lastReflectTry > 3600e3) {
       lastReflectTry = Date.now();
       dailyReflection().catch(e => console.error('reflection via wake skipped:', e.message));
+    }
+    // 攒着的记忆也趁醒来补写
+    if (Date.now() - lastDrainTry > 10 * 60e3) {
+      lastDrainTry = Date.now();
+      drainPendingHolds().catch(e => console.error('hold drain via wake skipped:', e.message));
     }
 
     const { tail, silenceH, proactive } = await herRecentPresence();
