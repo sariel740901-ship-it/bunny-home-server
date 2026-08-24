@@ -158,6 +158,17 @@ body.kb .tabbar{display:none}
 .side-item:hover{background:var(--chip)}
 .side-item:active{opacity:.7}
 .side-sec{font-size:12.5px;color:var(--muted);margin:16px 6px 6px;font-weight:600;letter-spacing:.5px}
+/* 左侧: 会话列表(和官端一样,随时切回任何一段对话) */
+.side.lside{left:0;right:auto;border-left:none;border-right:1px solid var(--border);box-shadow:8px 0 30px rgba(0,0,0,.12);transform:translateX(-105%)}
+.side.lside.show{transform:none}
+.sess-new{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 10px;border-radius:12px;cursor:pointer;font-size:14px;color:var(--accent);border:1px dashed color-mix(in srgb,var(--accent) 45%,var(--border));margin-bottom:10px}
+.sess-new:active{opacity:.7}
+.sess-item{display:flex;align-items:center;gap:8px;padding:12px 10px;border-radius:12px;cursor:pointer}
+.sess-item:hover,.sess-item.on{background:var(--chip)}
+.sess-item .sn{flex:1;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sess-item .st{font-size:11px;color:var(--muted);white-space:nowrap}
+.sess-item .sx{border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:3px 7px;border-radius:6px}
+.sess-item .sx:hover{color:#e0524d;background:var(--bg2)}
 .tool-hd{cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:6px;margin:10px 0 2px;border-radius:10px}
 .tool-hd:hover{background:var(--chip)}
 .tool-hd span{font-weight:400;font-size:11.5px}
@@ -248,6 +259,7 @@ body.kb .tabbar{display:none}
 <body>
 <div class="app" id="app">
   <header class="topbar">
+    <button class="txt-btn" onclick="toggleSess()">对话</button>
     <h1 id="title">Bunny Home</h1>
     <div class="actions">
       <button class="txt-btn" onclick="toggleSide()">菜单</button>
@@ -281,6 +293,14 @@ body.kb .tabbar{display:none}
     <a href="/games.html"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="9" rx="4.5"/><path d="M8 10.8v3.4M6.3 12.5h3.4"/><path d="M15.6 11.3h.01M18 13.6h.01"/></svg>游戏</a>
   </nav>
 </div>
+
+<!-- 左侧: 会话列表 -->
+<div class="drawer-mask" id="sessMask" onclick="toggleSess()"></div>
+<aside class="side lside" id="sessSide">
+  <div class="stitle">你们的对话</div>
+  <div class="sess-new" onclick="newSession()">＋ 开个新话头</div>
+  <div id="sessList"></div>
+</aside>
 
 <!-- 右侧拉框 -->
 <div class="drawer-mask" id="sideMask" onclick="toggleSide()"></div>
@@ -896,26 +916,11 @@ document.getElementById('inp').addEventListener('input',()=>{
   try{
     const list=await fetch('/api/sessions').then(r=>r.json());
     if(Array.isArray(list)){
+      sessions=list;
       // 从最近往回找第一间有消息的屋子 —— 空会话(哪次网络抽风误建的)不许挡路
       for(const s of list.slice(0,5)){
         const msgs=await fetch('/api/messages/'+s.id).then(r=>r.json()).catch(()=>null);
-        if(Array.isArray(msgs)&&msgs.length){
-          sessionId=s.id;
-          document.getElementById('welcome').style.display='none';
-          let lastEl=null;
-          for(const m of msgs){
-            const ts=m.created_at?new Date(m.created_at).getTime():Date.now();
-            const parts=addRow(m.role==='user'?'user':'assistant',ts);
-            if(m.role==='user'){
-              parts.bub.classList.toggle('sticker-only',mediaOnly(m.content));
-              renderContent(parts.bub,m.content);
-            }
-            else fillAssistant(parts,m.content);
-            lastEl=parts.row;
-          }
-          if(lastEl){const me=document.getElementById('msgs');me.scrollTop=me.scrollHeight;}
-          return;
-        }
+        if(Array.isArray(msgs)&&msgs.length){sessionId=s.id;renderHistory(msgs);return}
       }
       if(list.length){sessionId=list[0].id;return}
       // 列表确实是空的(不是请求失败)才新建 —— 失败时什么都不建,免得空屋子越攒越多
@@ -924,6 +929,83 @@ document.getElementById('inp').addEventListener('input',()=>{
     }
   }catch(e){}
 })();
+
+// ═══ 会话列表: 和官端一样,左侧抽屉随时切换 ═══
+let sessions=[];
+const welcomeEl=document.getElementById('welcome');
+function renderHistory(msgs){
+  if(!Array.isArray(msgs)||!msgs.length)return;
+  welcomeEl.style.display='none';
+  let lastEl=null;
+  for(const m of msgs){
+    const ts=m.created_at?new Date(m.created_at).getTime():Date.now();
+    const parts=addRow(m.role==='user'?'user':'assistant',ts);
+    if(m.role==='user'){
+      parts.bub.classList.toggle('sticker-only',mediaOnly(m.content));
+      renderContent(parts.bub,m.content);
+    }
+    else fillAssistant(parts,m.content);
+    lastEl=parts.row;
+  }
+  if(lastEl){const me=document.getElementById('msgs');me.scrollTop=me.scrollHeight;}
+}
+function clearMsgs(){
+  const msgs=document.getElementById('msgs');
+  msgs.innerHTML='';
+  msgs.appendChild(welcomeEl);
+  welcomeEl.style.display='';
+}
+async function loadSession(id){
+  sessionId=id;
+  clearMsgs();
+  try{
+    const msgs=await fetch('/api/messages/'+id).then(r=>r.json());
+    renderHistory(msgs);
+  }catch(e){}
+}
+function toggleSess(){
+  const on=document.getElementById('sessSide').classList.toggle('show');
+  document.getElementById('sessMask').classList.toggle('show',on);
+  if(on)refreshSessions();
+}
+async function refreshSessions(){
+  try{
+    const list=await fetch('/api/sessions').then(r=>r.json());
+    if(Array.isArray(list)){sessions=list;renderSessions()}
+  }catch(e){}
+}
+function sessTime(t){
+  if(!t)return'';
+  const d=new Date(t),now=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  if(d.toDateString()===now.toDateString())return pad(d.getHours())+':'+pad(d.getMinutes());
+  return(d.getMonth()+1)+'月'+d.getDate()+'日';
+}
+function renderSessions(){
+  const host=document.getElementById('sessList');host.innerHTML='';
+  for(const s of sessions){
+    const d=document.createElement('div');
+    d.className='sess-item'+(s.id===sessionId?' on':'');
+    d.innerHTML='<span class="sn"></span><span class="st"></span><button class="sx" title="删除">✕</button>';
+    d.querySelector('.sn').textContent=s.name||'未命名';
+    d.querySelector('.st').textContent=sessTime(s.updated_at||s.created_at);
+    d.onclick=()=>{toggleSess();if(s.id!==sessionId)loadSession(s.id)};
+    d.querySelector('.sx').onclick=async ev=>{
+      ev.stopPropagation();
+      if(!confirm('删掉「'+(s.name||'未命名')+'」?这间屋子里的聊天记录会一起消失,不可恢复。'))return;
+      try{await fetch('/api/sessions/'+s.id,{method:'DELETE'})}catch(e){}
+      if(s.id===sessionId){sessionId=null;clearMsgs()}
+      refreshSessions();
+    };
+    host.appendChild(d);
+  }
+}
+async function newSession(){
+  try{
+    const d=await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'新对话'})}).then(r=>r.json());
+    if(d.id){sessionId=d.id;clearMsgs();toggleSess()}
+  }catch(e){}
+}
 
 async function send(){
   const inp=document.getElementById('inp'),text=inp.value.trim();

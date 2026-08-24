@@ -1084,6 +1084,35 @@ async function describeImageGemini(dataUrl) {
   }
 }
 
+// 会话标题: 聊到 4 句以上、名字还是默认的,就让模型起个题目(只起一次)
+const DEFAULT_SESSION_NAMES = ['我们的家', '新对话', '他想你的时候'];
+async function maybeTitleSession(sessionId) {
+  if (!sessionId) return;
+  const { data: s } = await supabase.from('sessions').select('id,name').eq('id', sessionId).single();
+  if (!s || !DEFAULT_SESSION_NAMES.includes(s.name)) return;
+  const { data: msgs } = await supabase.from('messages')
+    .select('role,content').eq('session_id', sessionId).eq('visible', true)
+    .order('created_at', { ascending: true }).limit(12);
+  if (!msgs || msgs.length < 4) return;
+  const convo = msgs.map(m => (m.role === 'user' ? '她' : '他') + ': '
+    + imgToText(stripThink(m.content)).slice(0, 120)).join('\n').slice(0, 1500);
+  const resp = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + API_KEY },
+    body: JSON.stringify({
+      model: API_MODEL, max_tokens: 30, temperature: 0.5, ...NO_THINK,
+      messages: [
+        { role: 'system', content: '给下面这段恋人间的日常对话起一个会话标题:4~10个字,具体、有他们自己的味道,不要引号不要标点,直接输出标题本身。' },
+        { role: 'user', content: convo }
+      ]
+    })
+  });
+  const d = await resp.json();
+  const title = String(d.choices?.[0]?.message?.content || '').trim()
+    .replace(/["「」『』。,,、\s]/g, '').slice(0, 16);
+  if (title) await supabase.from('sessions').update({ name: title }).eq('id', sessionId);
+}
+
 app.post('/api/chat', async (req, res) => {
   const { session_id, message, persona } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
@@ -1333,13 +1362,14 @@ app.post('/api/chat', async (req, res) => {
       + (reasoning || used.length ? '\n' : '')
       + rawContent;
 
-    // 7. 存入 AI 回复,并把会话顶到列表最前
+    // 7. 存入 AI 回复,并把会话顶到列表最前;顺手看看要不要给这间屋子起名
     if (session_id) {
       await supabase.from('messages').insert({
         session_id, role: 'assistant', content: reply,
         created_at: new Date().toISOString()
       });
       await touchSession(session_id);
+      maybeTitleSession(session_id).catch(e => console.error('session title skipped:', e.message));
     }
 
     res.json({ reply, session_id });
