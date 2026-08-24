@@ -104,9 +104,13 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .bknotepop .brep .ra{font-size:11px;color:var(--muted)}
 .bknotepop .bclose{text-align:center;font-size:11.5px;color:var(--muted);margin-top:8px;cursor:pointer;padding:3px}
 .bknotes{margin-top:8px;display:flex;flex-direction:column;gap:8px}
-.bknote-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;cursor:pointer}
+.bknote-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
 .bknote-item .bq{font-size:11.5px;color:var(--muted);margin-bottom:3px}
 .bknote-item .bc{font-family:var(--serif);font-size:13px;line-height:1.75}
+.bknote-item .brep{margin-top:7px;padding:7px 9px;background:var(--bg2);border-radius:9px;font-size:12.5px;line-height:1.7}
+.bknote-item .ra{font-size:11px;color:var(--muted)}
+.npn{font-size:11px;color:var(--muted);margin-right:3px}
+.npjump{float:right;color:var(--accent);cursor:pointer;font-size:11px;padding:0 2px}
 .emptyb{text-align:center;color:var(--muted);font-size:13.5px;font-family:var(--serif);padding:40px 0}
 
 /* 棋盘边聊天 */
@@ -208,14 +212,18 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
       <div id="bookList"><div class="emptyb">书架空着 —— 添一本,和他一起读</div></div>
     </div>
     <div id="reader" class="hide">
-      <div class="ctrl"><button class="pill" onclick="closeReader()">书架</button><button class="pill hide" id="bkNotesBtn" onclick="toggleNotesList()">批注</button><span class="status" id="pgInfo"></span></div>
+      <div class="ctrl"><button class="pill" onclick="closeReader()">书架</button><button class="pill hide" id="bkNotesBtn" onclick="openNotesPage('note')">批注</button><button class="pill hide" id="bkChapBtn" onclick="openNotesPage('chap')">章评</button><span class="status" id="pgInfo"></span></div>
       <div class="page" id="pageBox"></div>
       <div id="bkNotePop" class="bknotepop hide"></div>
-      <div id="bkNotesList" class="bknotes hide"></div>
       <div class="ctrl" style="justify-content:center;margin-top:10px"><button class="pill" onclick="turn(-1)">上一页</button><button class="pill" onclick="turn(1)">下一页</button></div>
       <div class="him"><div class="av">🐰</div><div class="hb" id="bkSay"></div></div>
       <div class="her"><div class="av" data-herav>🌸</div><div class="hb" id="bkMe"></div></div>
       <div class="chatrow"><input id="bkChat" placeholder="聊聊这一页…(什么都不填直接发 = 让他说说)" maxlength="300"><button class="pill" id="bkChatBtn">发送</button></div>
+    </div>
+    <!-- 批注/章评 二级页面: 整楼全部展开,能直接回复 -->
+    <div id="notesPage" class="hide">
+      <div class="ctrl"><button class="pill" onclick="closeNotesPage()">返回阅读</button><span class="status" id="npInfo"></span></div>
+      <div class="bknotes" id="npList"></div>
     </div>
   </div>
 
@@ -686,6 +694,7 @@ async function openBook(id){
   bkIdx=0;
   for(let i=bkOffs.length-1;i>=0;i--)if(bkOffs[i]<=(curBook.pos||0)){bkIdx=i;break}
   document.getElementById('shelf').classList.add('hide');
+  document.getElementById('notesPage').classList.add('hide');
   document.getElementById('reader').classList.remove('hide');
   say('bkSay','');
   renderPage();
@@ -693,6 +702,7 @@ async function openBook(id){
 function closeReader(){
   curBook=null;
   document.getElementById('reader').classList.add('hide');
+  document.getElementById('notesPage').classList.add('hide');
   document.getElementById('shelf').classList.remove('hide');
   refreshBooks();
 }
@@ -720,11 +730,15 @@ function renderPage(){
   box.innerHTML=html||'(这一页是空的)';
   box.querySelectorAll('.noted').forEach(sp=>sp.onclick=ev=>{ev.stopPropagation();showBkNote(parseInt(sp.dataset.nid,10))});
   hideBkNote();
-  document.getElementById('bkNotesList').classList.add('hide');
-  const tops=bkNotes.filter(n=>!n.parent_id);
+  // 顶栏分开统计: 批注(钉在原文上的)和章评(整本感想)各自计数,点开各自的二级页面
+  const nNote=bkNotes.filter(n=>!n.parent_id&&n.pos>=0).length;
+  const nChap=bkNotes.filter(n=>!n.parent_id&&n.pos<0).length;
   const btn=document.getElementById('bkNotesBtn');
-  btn.textContent='批注 '+tops.length;
-  btn.classList.toggle('hide',!tops.length);
+  btn.textContent='批注 '+nNote;
+  btn.classList.toggle('hide',!nNote);
+  const cbtn=document.getElementById('bkChapBtn');
+  cbtn.textContent='章评 '+nChap;
+  cbtn.classList.toggle('hide',!nChap);
   const pct=curBook.len?Math.round(bkOffs[bkIdx]/curBook.len*100):0;
   document.getElementById('pgInfo').textContent='《'+curBook.title+'》 '+(bkIdx+1)+'/'+bkPages.length+' 页 · '+pct+'%';
   clearTimeout(posTimer);
@@ -767,21 +781,51 @@ function showBkNote(id){
   p.classList.remove('hide');
 }
 function hideBkNote(){document.getElementById('bkNotePop').classList.add('hide')}
-function toggleNotesList(){
-  const el=document.getElementById('bkNotesList');
-  if(!el.classList.contains('hide')){el.classList.add('hide');return}
-  el.innerHTML='';
-  for(const n of bkNotes.filter(x=>!x.parent_id)){
-    const nr=bkNotes.filter(x=>x.parent_id===n.id).length;
+let npKind='note';
+function openNotesPage(kind){
+  npKind=kind;
+  hideBkNote();
+  document.getElementById('reader').classList.add('hide');
+  document.getElementById('notesPage').classList.remove('hide');
+  renderNotesPage();
+  window.scrollTo(0,0);
+}
+function closeNotesPage(){
+  document.getElementById('notesPage').classList.add('hide');
+  document.getElementById('reader').classList.remove('hide');
+  renderPage();
+}
+function renderNotesPage(){
+  const tops=bkNotes.filter(n=>!n.parent_id&&(npKind==='note'?n.pos>=0:n.pos<0))
+    .sort((a,b)=>npKind==='note'?a.pos-b.pos:a.id-b.id);
+  document.getElementById('npInfo').textContent='《'+(curBook?curBook.title:'')+'》 '+(npKind==='note'?'批注':'章评')+' '+tops.length+' 条';
+  const host=document.getElementById('npList');host.innerHTML='';
+  if(!tops.length){host.innerHTML='<div class="emptyb">这里还空着</div>';return}
+  for(const n of tops){
+    const reps=bkNotes.filter(x=>x.parent_id===n.id);
+    const q=String(n.anchor||'');
     const d=document.createElement('div');d.className='bknote-item';
     d.innerHTML=(n.pos>=0
-      ?'<div class="bq">「'+escHtml(String(n.anchor||'').slice(0,36))+'…」'+(nr?' · '+nr+' 条回复':'')+'</div>'
-      :'<div class="bq">章评 · 整本'+(nr?' · '+nr+' 条回复':'')+'</div>')
-      +'<div class="bc">'+escHtml(n.content)+'</div>';
-    d.onclick=()=>{el.classList.add('hide');if(n.pos>=0)jumpToPos(n.pos);showBkNote(n.id)};
-    el.appendChild(d);
+        ?'<div class="bq">「'+escHtml(q.slice(0,40))+(q.length>40?'…':'')+'」<span class="npjump" data-jump>跳到原文</span></div>'
+        :'<div class="bq">章评 · 整本</div>')
+      +'<div class="bc">'+noteAv('him')+'<span class="npn">小克</span>'+escHtml(n.content)+'</div>'
+      +reps.map(r=>'<div class="brep"><span class="ra">'+noteAv(r.author)+(r.author==='him'?'小克':'嘉嘉')+'</span> '+escHtml(r.content)+'</div>').join('')
+      +'<div class="chatrow" style="margin-top:8px"><input maxlength="500" placeholder="回复他…"><button class="pill" data-npsend>发送</button></div>';
+    const jp=d.querySelector('[data-jump]');
+    if(jp)jp.onclick=ev=>{ev.stopPropagation();closeNotesPage();jumpToPos(n.pos);showBkNote(n.id)};
+    const inp=d.querySelector('input');
+    const send=async()=>{
+      const v=inp.value.trim();
+      if(!v||!curBook)return;
+      inp.value='';
+      const r=await fetch('/api/books/'+curBook.id+'/notes/reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note_id:n.id,content:v})}).then(x=>x.ok?x.json():null).catch(()=>null);
+      if(r&&r.note){bkNotes.push(r.note);renderNotesPage();}
+      else alert('没回上去 — book_notes 表建了吗?(parent_id 列也要有)');
+    };
+    d.querySelector('[data-npsend]').onclick=send;
+    inp.onkeydown=e=>{if(e.key==='Enter')send()};
+    host.appendChild(d);
   }
-  el.classList.remove('hide');
 }
 function jumpToPos(pos){
   for(let i=bkOffs.length-1;i>=0;i--)if(bkOffs[i]<=pos){bkIdx=i;break}
