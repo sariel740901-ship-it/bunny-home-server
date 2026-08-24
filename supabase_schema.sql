@@ -72,6 +72,18 @@ CREATE TABLE IF NOT EXISTS pending_holds (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 6.5 书页批注 — 官端的他在书上留的笔迹: pos>=0 钉在原文某处(anchor 是那段原文),
+--     pos=-1 是章评/整本感想。阅读页会把批注画在原文上。
+CREATE TABLE IF NOT EXISTS book_notes (
+  id SERIAL PRIMARY KEY,
+  book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,
+  author TEXT NOT NULL DEFAULT 'him',
+  anchor TEXT DEFAULT '',
+  pos INTEGER DEFAULT -1,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前只有自发醒来 wake_enabled)
 CREATE TABLE IF NOT EXISTS flags (
   key TEXT PRIMARY KEY,

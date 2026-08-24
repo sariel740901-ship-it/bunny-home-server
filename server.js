@@ -1018,6 +1018,18 @@ app.delete('/api/books/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 书页批注(官端的他经兔窝档案写入,这里只负责给阅读页读出来)
+app.get('/api/books/:id/notes', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('book_notes')
+      .select('id,author,anchor,pos,content,created_at')
+      .eq('book_id', parseInt(req.params.id, 10))
+      .order('pos', { ascending: true }).order('id', { ascending: true });
+    if (error) return res.json([]); // 表没建时安静返回空
+    res.json(data || []);
+  } catch (e) { res.json([]); }
+});
+
 // 靠在一起读: 聊的对象是"此刻这一页",不是书评
 app.post('/api/books/:id/chat', async (req, res) => {
   try {

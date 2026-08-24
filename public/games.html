@@ -93,6 +93,16 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .bk-item .bx{border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px}
 .bk-item .bx:hover{color:#e0524d;background:var(--bg2)}
 .bookadd{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;margin-bottom:14px}
+/* 他的批注: 原文上的虚线笔迹 + 点开的小纸条 */
+.noted{border-bottom:1.5px dashed var(--accent);background:color-mix(in srgb,var(--accent) 9%,transparent);cursor:pointer;border-radius:2px}
+.nmark{font-size:9px;opacity:.8}
+.bknotepop{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:10px 13px;margin-top:8px;font-size:13px;line-height:1.8;cursor:pointer}
+.bknotepop b{font-size:11.5px;color:var(--muted);font-weight:500;display:block;margin-bottom:3px;letter-spacing:.3px}
+.bknotepop .bt2{font-family:var(--serif)}
+.bknotes{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+.bknote-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 12px;cursor:pointer}
+.bknote-item .bq{font-size:11.5px;color:var(--muted);margin-bottom:3px}
+.bknote-item .bc{font-family:var(--serif);font-size:13px;line-height:1.75}
 .emptyb{text-align:center;color:var(--muted);font-size:13.5px;font-family:var(--serif);padding:40px 0}
 
 /* 棋盘边聊天 */
@@ -194,8 +204,10 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
       <div id="bookList"><div class="emptyb">书架空着 —— 添一本,和他一起读</div></div>
     </div>
     <div id="reader" class="hide">
-      <div class="ctrl"><button class="pill" onclick="closeReader()">书架</button><span class="status" id="pgInfo"></span></div>
+      <div class="ctrl"><button class="pill" onclick="closeReader()">书架</button><button class="pill hide" id="bkNotesBtn" onclick="toggleNotesList()">批注</button><span class="status" id="pgInfo"></span></div>
       <div class="page" id="pageBox"></div>
+      <div id="bkNotePop" class="bknotepop hide" onclick="hideBkNote()"></div>
+      <div id="bkNotesList" class="bknotes hide"></div>
       <div class="ctrl" style="justify-content:center;margin-top:10px"><button class="pill" onclick="turn(-1)">上一页</button><button class="pill" onclick="turn(1)">下一页</button></div>
       <div class="him"><div class="av">🐰</div><div class="hb" id="bkSay"></div></div>
       <div class="her"><div class="av" data-herav>🌸</div><div class="hb" id="bkMe"></div></div>
@@ -596,7 +608,7 @@ bindBoardChat('gmkChat','gmkChatBtn','gomoku');
 })();
 
 // ═══ 书房 ═══
-let books=[],curBook=null,bkPages=[],bkOffs=[],bkIdx=0,bkLog=[],posTimer=0;
+let books=[],curBook=null,bkPages=[],bkOffs=[],bkIdx=0,bkLog=[],bkNotes=[],posTimer=0;
 function bookAddUI(show){
   document.getElementById('bookAdd').classList.toggle('hide',show===false);
   if(show===true)document.getElementById('bkTitle').focus();
@@ -665,6 +677,8 @@ async function openBook(id){
   curBook=await r.json();
   const p=paginate(curBook.content||'');
   bkPages=p.ps;bkOffs=p.offs;bkLog=[];
+  bkNotes=await fetch('/api/books/'+id+'/notes').then(x=>x.ok?x.json():[]).catch(()=>[]);
+  if(!Array.isArray(bkNotes))bkNotes=[];
   bkIdx=0;
   for(let i=bkOffs.length-1;i>=0;i--)if(bkOffs[i]<=(curBook.pos||0)){bkIdx=i;break}
   document.getElementById('shelf').classList.add('hide');
@@ -678,15 +692,65 @@ function closeReader(){
   document.getElementById('shelf').classList.remove('hide');
   refreshBooks();
 }
+function escHtml(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML}
 function renderPage(){
   if(!curBook)return;
-  document.getElementById('pageBox').textContent=bkPages[bkIdx]||'(这一页是空的)';
+  const text=bkPages[bkIdx]||'';
+  const pageStart=bkOffs[bkIdx]||0;
+  // 落在本页的批注: 按字符位置把原文包上虚线笔迹
+  const inPage=bkNotes
+    .filter(n=>n.pos>=0&&n.pos<pageStart+text.length&&n.pos+Math.max(1,(n.anchor||'').length)>pageStart)
+    .sort((a,b)=>a.pos-b.pos);
+  let html='',cur=0;
+  for(const n of inPage){
+    let s=Math.max(0,n.pos-pageStart);
+    let e=Math.min(text.length,n.pos-pageStart+Math.max(1,(n.anchor||'').length));
+    if(s<cur){if(e<=cur)continue;s=cur}
+    html+=escHtml(text.slice(cur,s));
+    html+='<span class="noted" data-nid="'+n.id+'">'+escHtml(text.slice(s,e))+'<sup class="nmark">🐰</sup></span>';
+    cur=e;
+  }
+  html+=escHtml(text.slice(cur));
+  const box=document.getElementById('pageBox');
+  box.innerHTML=html||'(这一页是空的)';
+  box.querySelectorAll('.noted').forEach(sp=>sp.onclick=ev=>{ev.stopPropagation();showBkNote(parseInt(sp.dataset.nid,10))});
+  hideBkNote();
+  document.getElementById('bkNotesList').classList.add('hide');
+  const btn=document.getElementById('bkNotesBtn');
+  btn.textContent='批注 '+bkNotes.length;
+  btn.classList.toggle('hide',!bkNotes.length);
   const pct=curBook.len?Math.round(bkOffs[bkIdx]/curBook.len*100):0;
   document.getElementById('pgInfo').textContent='《'+curBook.title+'》 '+(bkIdx+1)+'/'+bkPages.length+' 页 · '+pct+'%';
   clearTimeout(posTimer);
   posTimer=setTimeout(()=>{ // 翻页停稳 2 秒才存进度,不刷接口
     if(curBook)fetch('/api/books/'+curBook.id+'/pos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pos:bkOffs[bkIdx]})}).catch(()=>{});
   },2000);
+}
+function showBkNote(id){
+  const n=bkNotes.find(x=>x.id===id);if(!n)return;
+  const p=document.getElementById('bkNotePop');
+  p.innerHTML='<b>🐰 小克的批注 · 点一下收起</b><div class="bt2">'+escHtml(n.content)+'</div>';
+  p.classList.remove('hide');
+}
+function hideBkNote(){document.getElementById('bkNotePop').classList.add('hide')}
+function toggleNotesList(){
+  const el=document.getElementById('bkNotesList');
+  if(!el.classList.contains('hide')){el.classList.add('hide');return}
+  el.innerHTML='';
+  for(const n of bkNotes){
+    const d=document.createElement('div');d.className='bknote-item';
+    d.innerHTML=(n.pos>=0
+      ?'<div class="bq">「'+escHtml(String(n.anchor||'').slice(0,36))+'…」 · 点击跳过去</div>'
+      :'<div class="bq">章评 · 整本</div>')
+      +'<div class="bc">'+escHtml(n.content)+'</div>';
+    if(n.pos>=0)d.onclick=()=>{jumpToPos(n.pos);el.classList.add('hide')};
+    el.appendChild(d);
+  }
+  el.classList.remove('hide');
+}
+function jumpToPos(pos){
+  for(let i=bkOffs.length-1;i>=0;i--)if(bkOffs[i]<=pos){bkIdx=i;break}
+  renderPage();
 }
 function turn(d){
   if(!curBook)return;
