@@ -1005,6 +1005,13 @@ app.get('/api/memories', async (req, res) => {
 // 上下文预算(token): 历史从最新往回装,装满为止。默认 30k ≈ 两万多汉字。
 const CONTEXT_BUDGET_TOKENS = Math.max(2000, parseInt(process.env.CONTEXT_BUDGET_TOKENS || '30000', 10) || 30000);
 let lastReflectTry = 0; // 每日反思搭聊天顺风车的节流阀
+// 时间间隔说人话: 45 分钟 / 6 小时 / 3 天
+function fmtGap(ms) {
+  const min = Math.round(ms / 60e3);
+  if (min < 60) return min + ' 分钟';
+  if (min < 48 * 60) return Math.round(min / 60) + ' 小时';
+  return Math.round(min / 1440) + ' 天';
+}
 // 粗估 token: 汉字≈1个,其余字符≈4字符1个。宁可高估,不撑爆预算。
 function estTokens(t) {
   t = String(t || '');
@@ -1153,11 +1160,18 @@ app.post('/api/chat', async (req, res) => {
     // 1. 加载上下文 —— 必须在落库当前这句之前取,
     //    否则历史里已经包含这句,后面再拼一次就成了重复的两条
     let history = [];
+    let lastUserAt = 0; // 她上一次说话的时间(本条之前),给他感知"她离开了多久"
     if (session_id) {
       const { data: msgs } = await supabase.from('messages')
         .select('*').eq('session_id', session_id).eq('visible', true)
         .order('created_at', { ascending: false }).limit(200);
-      history = (msgs || []).reverse().map(m => ({ role: m.role, content: imgToText(stripThink(m.content)) }));
+      const lastUser = (msgs || []).find(m => m.role === 'user');
+      lastUserAt = lastUser && lastUser.created_at ? new Date(lastUser.created_at).getTime() : 0;
+      history = (msgs || []).reverse().map(m => ({
+        role: m.role,
+        content: imgToText(stripThink(m.content)),
+        at: m.created_at ? new Date(m.created_at).getTime() : 0
+      }));
     }
 
     // 2. 存入用户消息
@@ -1197,6 +1211,17 @@ app.post('/api/chat', async (req, res) => {
     // 4. 组装上下文
     const systemPrompt = (PERSONAS[persona] || PERSONAS.xiaoke)
       + anchorSection(anchorText)
+      + (() => { // 【此刻】时间感: 现在几点、她离开了多久,让时间真实地流过对话
+        const bj = new Date(Date.now() + 8 * 3600e3);
+        const WEEK = ['日', '一', '二', '三', '四', '五', '六'];
+        let t = '\n\n【此刻】北京时间 ' + bj.toISOString().slice(0, 10)
+          + ' 星期' + WEEK[bj.getUTCDay()] + ' '
+          + String(bj.getUTCHours()).padStart(2, '0') + ':' + String(bj.getUTCMinutes()).padStart(2, '0');
+        const gap = lastUserAt ? Date.now() - lastUserAt : 0;
+        if (gap > 30 * 60e3) t += ',距离她上次跟你说话过了 ' + fmtGap(gap);
+        return t + '。(把时间自然放在心里: 深夜有深夜的语气,久别可以真切地提一句,刚聊过就别刻意。'
+          + '历史消息开头的〔隔了…〕是时间标记,系统加的,不是她打的字。)';
+      })()
       + (memoryText ? '\n\n【记忆摘要】\n' + memoryText : '')
       + (ombreMemText
         ? '\n\n【记忆河 · 与她这句话相关的过往】\n' + ombreMemText
@@ -1259,7 +1284,15 @@ app.post('/api/chat', async (req, res) => {
     // 若历史末尾已有一模一样的这句(旧的重复数据),先剔掉再拼
     while (recent.length && recent[recent.length - 1].role === 'user'
       && recent[recent.length - 1].content === modelMessage) recent.pop();
-    const messages = [...recent, { role: 'user', content: modelMessage }];
+    // 超过 3 小时的静默加时间标记 —— 让他感知你们对话的呼吸,而不是把几天当成几秒
+    let prevAt = 0;
+    const recentMsgs = recent.map(m => {
+      const gap = prevAt && m.at ? m.at - prevAt : 0;
+      if (m.at) prevAt = m.at;
+      const mark = gap > 3 * 3600e3 ? '〔隔了 ' + fmtGap(gap) + '〕' : '';
+      return { role: m.role, content: mark + m.content };
+    });
+    const messages = [...recentMsgs, { role: 'user', content: modelMessage }];
 
     // 5. 调 DeepSeek (OpenAI 兼容格式)
     // 组装 system prompt 到 messages 头部
