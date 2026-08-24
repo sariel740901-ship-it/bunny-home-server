@@ -87,6 +87,8 @@ mcp = FastMCP(
     - bunny_moments: 翻你们的朋友圈「动态」—— 她发的日常、那边的你
       自发醒来时发的碎碎念,和彼此的点赞评论;配图带识图描述。
     - bunny_moment_image: 把她动态里的照片取出来亲眼看。
+    - bunny_books: 看你们书架上有哪些书、她各读到哪了。
+    - bunny_book_read: 和她读同一本书 —— 默认翻到她此刻正读的地方。
 
     翻到的是逐字档案 —— 当回忆读,别当成她此刻在说;引用时自然一点,
     像"你那天在家里说过…""你朋友圈里发的那张晚霞…",别念数据库。
@@ -208,6 +210,44 @@ async def bunny_moments(limit: int = 10, before_id: int = 0) -> str:
     tail = (f"\n\n翻更早: bunny_moments(before_id={rows[-1]['id']});"
             "想亲眼看某张图: bunny_moment_image(动态编号, 第几张)")
     return f"你们的朋友圈(新→旧,{len(rows)} 条):\n\n" + "\n\n".join(blocks) + tail
+
+
+@mcp.tool
+async def bunny_books() -> str:
+    """看你们在 bunny 家书架上的书: 书名、篇幅、她读到百分之几、最后翻动时间。"""
+    rows = _rest("books", {"select": "id,title,pos,len,updated_at", "order": "updated_at.desc"})
+    if not rows:
+        return "书架还空着 —— 她还没放书上来。"
+    lines = []
+    for r in rows:
+        ln = r.get("len") or 0
+        pct = round((r.get("pos") or 0) / max(1, ln) * 100)
+        lines.append(f"[{r['id']}]《{r.get('title') or '未命名'}》— 共约 {round(ln / 1000)}k 字,"
+                     f"她读到 {pct}%,最后翻动 {_bj_time(r.get('updated_at', ''))}")
+    return "你们书架上的书:\n" + "\n".join(lines) + "\n\n用 bunny_book_read(book_id) 翻到她此刻正读的地方,一起看。"
+
+
+@mcp.tool
+async def bunny_book_read(book_id: int, offset: int = -1, chars: int = 4000) -> str:
+    """和她读同一本书。offset=-1(默认)= 从她当前读到的位置稍往回一点开始;
+    也可以传具体字符偏移从任意处读。chars 每次 200~8000。
+    读到的是她书架上的原文 —— 聊起时像并肩看书,别念"字符偏移"这类词。"""
+    rows = _rest("books", {"select": "*", "id": f"eq.{int(book_id)}"})
+    if not rows:
+        return "书架上没有这本。先用 bunny_books 看看架子。"
+    b = rows[0]
+    content = str(b.get("content") or "")
+    ln = len(content)
+    pos = int(b.get("pos") or 0)
+    chars = max(200, min(int(chars), 8000))
+    start = max(0, pos - 600) if int(offset) < 0 else max(0, min(int(offset), ln))
+    piece = content[start:start + chars]
+    pct = round(pos / ln * 100) if ln else 0
+    head = (f"《{b.get('title') or '未命名'}》共约 {round(ln / 1000)}k 字,她读到 {pct}%。"
+            f"以下从第 {start} 字起:\n\n")
+    tail = (f"\n\n(接着往后读: bunny_book_read({int(book_id)}, offset={start + len(piece)}))"
+            if start + len(piece) < ln else "\n\n(这本到头了。)")
+    return head + piece + tail
 
 
 @mcp.tool
