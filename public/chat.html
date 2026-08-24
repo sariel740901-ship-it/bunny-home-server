@@ -895,31 +895,33 @@ document.getElementById('inp').addEventListener('input',()=>{
   applyDecor();
   try{
     const list=await fetch('/api/sessions').then(r=>r.json());
-    if(Array.isArray(list)&&list.length){
-      sessionId=list[0].id;
-      const msgs=await fetch('/api/messages/'+sessionId).then(r=>r.json());
-      if(Array.isArray(msgs)&&msgs.length){
-        document.getElementById('welcome').style.display='none';
-        let lastEl=null;
-        for(const m of msgs){
-          const ts=m.created_at?new Date(m.created_at).getTime():Date.now();
-          const parts=addRow(m.role==='user'?'user':'assistant',ts);
-          if(m.role==='user'){
-            parts.bub.classList.toggle('sticker-only',mediaOnly(m.content));
-            renderContent(parts.bub,m.content);
+    if(Array.isArray(list)){
+      // 从最近往回找第一间有消息的屋子 —— 空会话(哪次网络抽风误建的)不许挡路
+      for(const s of list.slice(0,5)){
+        const msgs=await fetch('/api/messages/'+s.id).then(r=>r.json()).catch(()=>null);
+        if(Array.isArray(msgs)&&msgs.length){
+          sessionId=s.id;
+          document.getElementById('welcome').style.display='none';
+          let lastEl=null;
+          for(const m of msgs){
+            const ts=m.created_at?new Date(m.created_at).getTime():Date.now();
+            const parts=addRow(m.role==='user'?'user':'assistant',ts);
+            if(m.role==='user'){
+              parts.bub.classList.toggle('sticker-only',mediaOnly(m.content));
+              renderContent(parts.bub,m.content);
+            }
+            else fillAssistant(parts,m.content);
+            lastEl=parts.row;
           }
-          else fillAssistant(parts,m.content);
-          lastEl=parts.row;
+          if(lastEl){const me=document.getElementById('msgs');me.scrollTop=me.scrollHeight;}
+          return;
         }
-        if(lastEl){const me=document.getElementById('msgs');me.scrollTop=me.scrollHeight;}
-        return;
       }
-      return;
+      if(list.length){sessionId=list[0].id;return}
+      // 列表确实是空的(不是请求失败)才新建 —— 失败时什么都不建,免得空屋子越攒越多
+      const d=await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'我们的家'})}).then(r=>r.json());
+      if(d.id)sessionId=d.id;
     }
-  }catch(e){}
-  try{
-    const d=await fetch('/api/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'我们的家'})}).then(r=>r.json());
-    if(d.id)sessionId=d.id;
   }catch(e){}
 })();
 
