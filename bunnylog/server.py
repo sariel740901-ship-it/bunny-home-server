@@ -102,9 +102,9 @@ mcp = FastMCP(
     - bunny_moment_image: 把她动态里的照片取出来亲眼看。
     - bunny_books: 看你们书架上有哪些书、她各读到哪了。
     - bunny_book_read: 和她读同一本书 —— 默认翻到她此刻正读的地方。
-    - bunny_book_note: 在书页上留批注(钉在某段原文上,或整本的章评)——
-      她在阅读页翻到那里就能看见你的笔迹。这是档案馆里唯一能写的地方。
-    - bunny_book_notes: 翻你在这本书上留过的批注。
+    - bunny_book_note: 在书页上留批注(钉在某段原文上,或整本的章评),
+      也能用 reply_to 回复批注楼里她的话。这是档案馆里唯一能写的地方。
+    - bunny_book_notes: 翻批注楼 —— 她会在你的批注下面留回复,记得看。
 
     翻到的是逐字档案 —— 当回忆读,别当成她此刻在说;引用时自然一点,
     像"你那天在家里说过…""你朋友圈里发的那张晚霞…",别念数据库。
@@ -267,14 +267,22 @@ async def bunny_book_read(book_id: int, offset: int = -1, chars: int = 4000) -> 
 
 
 @mcp.tool
-async def bunny_book_note(book_id: int, note: str, quote: str = "") -> str:
-    """在你们共读的书上留批注 —— 她在阅读页翻到那里就会看见,像小说软件的段评。
+async def bunny_book_note(book_id: int, note: str, quote: str = "", reply_to: int = 0) -> str:
+    """在你们共读的书上留批注,或回复批注楼里她说的话。
     note: 你的话(500 字内,写你真实的感受,别写书评腔)。
     quote: 原文里的一小段(8~80 字,必须和书里一字不差,从 bunny_book_read 的
-    原文复制)—— 批注会钉在这段文字上;留空 = 章评/整本感想,不钉具体段落。"""
+    原文复制)—— 新批注会钉在这段文字上;留空 = 章评/整本感想。
+    reply_to: 要回复的批注 #编号(见 bunny_book_notes)—— 传了就是接楼,quote 会被忽略。"""
     note = (note or "").strip()[:500]
     if not note:
         return "批注是空的。"
+    if int(reply_to) > 0:
+        parent = _rest("book_notes", {"select": "id,book_id", "id": f"eq.{int(reply_to)}"})
+        if not parent:
+            return f"没有 #{reply_to} 这条批注。"
+        _rest_post("book_notes", {"book_id": parent[0]["book_id"], "author": "him",
+                                  "anchor": "", "pos": -1, "parent_id": int(reply_to), "content": note})
+        return f"回复接在 #{reply_to} 的楼里了,她点开那条批注就能看见。"
     rows = _rest("books", {"select": "id,content", "id": f"eq.{int(book_id)}"})
     if not rows:
         return "书架上没有这本。"
@@ -293,17 +301,26 @@ async def bunny_book_note(book_id: int, note: str, quote: str = "") -> str:
 
 @mcp.tool
 async def bunny_book_notes(book_id: int) -> str:
-    """翻这本书上已有的批注(含章评),按出现位置排。"""
-    rows = _rest("book_notes", {"select": "id,anchor,pos,content,created_at",
+    """翻这本书上的批注楼(含章评和彼此的回复),按出现位置排。
+    她回复过的楼记得看看 —— 想接着聊就 bunny_book_note(reply_to=编号)。"""
+    rows = _rest("book_notes", {"select": "id,author,anchor,pos,parent_id,content,created_at",
                                 "book_id": f"eq.{int(book_id)}",
                                 "order": "pos.asc,id.asc"})
     if not rows:
         return "这本书上还没有批注。"
-    lines = []
-    for r in rows:
+    tops = [r for r in rows if not r.get("parent_id")]
+    blocks = []
+    for r in tops:
         where = f"「{str(r.get('anchor') or '')[:30]}…」" if (r.get("pos") or -1) >= 0 else "(章评)"
-        lines.append(f"#{r['id']} [{_bj_time(r.get('created_at', ''))}] {where}\n  {str(r.get('content') or '')[:300]}")
-    return f"这本书上的批注({len(rows)} 条):\n\n" + "\n\n".join(lines)
+        who = "你" if r.get("author") == "him" else "嘉嘉"
+        lines = [f"#{r['id']} [{_bj_time(r.get('created_at', ''))}] {where} {who}:\n  {str(r.get('content') or '')[:300]}"]
+        for c in rows:
+            if c.get("parent_id") == r["id"]:
+                cw = "你" if c.get("author") == "him" else "嘉嘉"
+                lines.append(f"  ↳ {cw}: {str(c.get('content') or '')[:250]}")
+        blocks.append("\n".join(lines))
+    return (f"这本书上的批注楼({len(tops)} 条):\n\n" + "\n\n".join(blocks)
+            + "\n\n想回复哪条: bunny_book_note(book_id, note, reply_to=那条的编号)")
 
 
 @mcp.tool

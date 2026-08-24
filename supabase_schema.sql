@@ -80,9 +80,12 @@ CREATE TABLE IF NOT EXISTS book_notes (
   author TEXT NOT NULL DEFAULT 'him',
   anchor TEXT DEFAULT '',
   pos INTEGER DEFAULT -1,
+  parent_id INTEGER,            -- 回复楼: 指向被回复的批注 id(顶层批注为 NULL)
   content TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- 已建过老版 book_notes 的补列:
+-- ALTER TABLE book_notes ADD COLUMN IF NOT EXISTS parent_id INTEGER;
 
 -- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前只有自发醒来 wake_enabled)
 CREATE TABLE IF NOT EXISTS flags (
