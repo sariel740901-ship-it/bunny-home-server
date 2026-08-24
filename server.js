@@ -553,9 +553,20 @@ app.get('/api/memory-bridge-test', async (req, res) => {
 });
 
 // ═══ 健康检查 ═════════════════════════════
+// 自发醒来的总开关(走 BUNNY_API_KEY 门禁,只有她能拨)
+app.post('/api/wake/switch', async (req, res) => {
+  try {
+    await setFlag('wake_enabled', !!req.body.on);
+    res.json({ ok: true, on: !!req.body.on });
+  } catch (e) {
+    res.status(500).json({ error: 'flags 表可能还没建(见 supabase_schema.sql): ' + e.message });
+  }
+});
+
 // ═══ 他的工具箱: 列出小克在这个家里都带了什么 ═══
-app.get('/api/tools', (req, res) => {
+app.get('/api/tools', async (req, res) => {
   const ombreOn = !!(OMBRE_URL && OMBRE_PASSWORD);
+  const wakeEnabled = await getFlag('wake_enabled', true);
   // switch=true 的项前端带开关,关掉后当轮聊天真的不带(通过 tools_off 传回来)
   res.json([
     { key: 'think', name: '思考', desc: '回复前先想一想,思考过程点开可看(会慢一些)', on: !!API_KEY, switch: true },
@@ -566,12 +577,14 @@ app.get('/api/tools', (req, res) => {
     { key: 'stickers', name: '表情包', desc: listStickers().length + ' 张可用', on: listStickers().length > 0, switch: true },
     { key: 'voice', name: '声音', desc: '给新消息挂可点播的语音条(默认关,省额度;通话不受影响)', on: !!process.env.XI_API_KEY, switch: true },
     { key: 'translate', name: '翻译', desc: '外文回复一键看中文', on: !!API_KEY },
-    (() => { // 醒来引擎的脉搏: 引擎每 ~5 分钟来报到一次,超过 15 分钟没来就该去家里看看了
+    (() => { // 醒来引擎的脉搏 + 总开关(开关存服务端 flags,真拦得住)
       const min = lastEnginePoll ? Math.round((Date.now() - lastEnginePoll) / 60e3) : -1;
-      const desc = min < 0 ? '引擎还没来报到过(家里电脑开着吗? 服务端刚重启的话等几分钟)'
+      const pulse = min < 0 ? '引擎还没来报到(电脑开着吗? 服务端刚重启的话等几分钟)'
         : min <= 1 ? '引擎刚来过,节律在走'
-        : '引擎 ' + min + ' 分钟前来过' + (min > 15 ? ' — 可能失联了,去家里 docker logs bunny-wakeup 看看' : ',节律在走');
-      return { key: 'wakeup', name: '自发醒来', desc, on: min >= 0 && min <= 15 };
+        : '引擎 ' + min + ' 分钟前来过' + (min > 15 ? ' — 可能失联,去家里 docker logs bunny-wakeup' : ',节律在走');
+      return { key: 'wakeup', name: '自发醒来',
+        desc: (wakeEnabled ? '' : '已关,他不会自己醒来 · ') + pulse,
+        on: true, switch: true, remote: 'wake', state: wakeEnabled };
     })(),
     { key: 'heartbeat', name: '心跳留言', desc: '你沉默太久时他主动留言', on: !!HEARTBEAT_TOKEN },
     { key: 'bark', name: '锁屏推送', desc: '留言同步推到手机锁屏 (Bark)', on: !!process.env.BARK_URL },
@@ -1643,6 +1656,25 @@ async function herRecentPresence() {
   return { tail: tail || [], silenceH, proactive };
 }
 
+// 服务端旗标(flags 表): 引擎是从外面敲门的,开关放浏览器里拦不住,得放这儿
+let flagCache = { at: 0, map: {} };
+async function getFlag(key, dflt) {
+  if (Date.now() - flagCache.at > 30e3) {
+    try {
+      const { data } = await supabase.from('flags').select('key,value');
+      flagCache = { at: Date.now(), map: Object.fromEntries((data || []).map(r => [r.key, r.value])) };
+    } catch (e) { flagCache.at = Date.now(); }
+  }
+  const v = flagCache.map[key];
+  return v === undefined || v === null ? dflt : v;
+}
+async function setFlag(key, value) {
+  const { error } = await supabase.from('flags')
+    .upsert({ key, value, updated_at: new Date().toISOString() });
+  if (error) throw new Error(error.message);
+  flagCache.at = 0;
+}
+
 let lastEnginePoll = 0; // 醒来引擎上次来访(戳 /api/wake 或拉 /api/wake/status 都算报到)
 const seenActivations = []; // 幂等: 同一个醒来机会最多兑现一次(引擎重试不会翻倍)
 app.all('/api/wake', async (req, res) => {
@@ -1651,6 +1683,9 @@ app.all('/api/wake', async (req, res) => {
   }
   lastEnginePoll = Date.now();
   try {
+    if (!(await getFlag('wake_enabled', true))) {
+      return res.json({ woke: false, reason: '自发醒来的开关是关的' });
+    }
     const activationId = String(req.query.activationId || '').slice(0, 64) || ('wk_' + Date.now());
     if (seenActivations.includes(activationId)) {
       return res.json({ woke: false, reason: '这个醒来机会已兑现过(幂等)' });

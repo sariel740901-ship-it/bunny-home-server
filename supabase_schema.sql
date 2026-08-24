@@ -49,5 +49,12 @@ CREATE TABLE IF NOT EXISTS moment_comments (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 6. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前只有自发醒来 wake_enabled)
+CREATE TABLE IF NOT EXISTS flags (
+  key TEXT PRIMARY KEY,
+  value JSONB,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- (曾经还有一张 settings 表存 system_prompt/温度/上下文轮数,已废弃删除 ——
 --  人设在 server.js 的 PERSONAS 里,上下文用环境变量 CONTEXT_BUDGET_TOKENS 控制)
