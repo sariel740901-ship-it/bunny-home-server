@@ -55,6 +55,8 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 /* 时间在左 · 两点按钮在右 */
 .mrow{display:flex;align-items:center;margin-top:8px;position:relative}
 .mtime{font-size:12px;color:var(--muted)}
+.mdel{border:none;background:none;font-size:12px;color:var(--name);cursor:pointer;padding:0;margin-left:12px;font-family:inherit}
+.mdel:active{opacity:.6}
 .dots{margin-left:auto;border:none;background:var(--bg2);color:var(--name);border-radius:5px;padding:2px 9px;cursor:pointer;font-size:14px;line-height:1.2;letter-spacing:1px}
 /* 弹出的 赞/评论 小条 */
 .actpop{position:absolute;right:40px;top:50%;transform:translateY(-50%) scaleX(0);transform-origin:right center;transition:transform .18s ease;background:#4b4844;border-radius:7px;display:flex;overflow:hidden;z-index:3}
@@ -254,7 +256,7 @@ function item(m){
     +'<div class="mname">'+(m.author==='him'?'小克':'嘉嘉')+'</div>'
     +(m.content?'<div class="mtext">'+esc(m.content)+'</div>':'')
     +(imgs.length?'<div class="mimgs n'+imgs.length+'">'+imgs.map(u=>'<img src="'+u+'" loading="lazy">').join('')+'</div>':'')
-    +'<div class="mrow"><span class="mtime">'+ftime(m.created_at)+'</span>'
+    +'<div class="mrow"><span class="mtime">'+ftime(m.created_at)+'</span><button class="mdel" data-del>删除</button>'
     +'<div class="actpop"><button data-like>'+HEART+(likes.includes('her')?'取消':'赞')+'</button><button data-cmt>'+BUBBLE+'评论</button></div>'
     +'<button class="dots">··</button></div>'
     +((likes.length||cmts.length)?'<div class="gbox">'
@@ -279,6 +281,12 @@ function item(m){
     e.stopPropagation();pop.classList.remove('show');
     const r=await fetch('/api/moments/like',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:m.id})});
     if(r.ok){const d=await r.json();m.likes=d.likes;render()}
+  };
+  el.querySelector('[data-del]').onclick=async e=>{
+    e.stopPropagation();pop.classList.remove('show');
+    if(!confirm('删掉这条动态?点赞和评论会一起消失,不可恢复。'))return;
+    const r=await fetch('/api/moments/'+m.id,{method:'DELETE'});
+    if(r.ok){moments=moments.filter(x=>x.id!==m.id);render()}
   };
   const row=el.querySelector('.crow2'),inp=row.querySelector('input');
   pop.querySelector('[data-cmt]').onclick=e=>{

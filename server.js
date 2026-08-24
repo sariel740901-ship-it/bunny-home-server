@@ -928,6 +928,94 @@ async function himRepliesInThread(momentId) {
   await supabase.from('moment_comments').insert({ moment_id: momentId, author: 'him', content: reply.slice(0, 300) });
 }
 
+// 手滑的动态可以撤走(评论跟着级联删除)
+app.delete('/api/moments/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('moments').delete().eq('id', parseInt(req.params.id, 10));
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══ 书房: 一起读书 ═══════════════════════════
+// books 表(建表 SQL 见 supabase_schema.sql)。她把书放上架,翻到哪页,
+// 他"看"的就是当前这一页 —— 聊的是此刻共同看着的文字,不是全书摘要。
+app.get('/api/books', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('books')
+      .select('id,title,pos,len,updated_at').order('updated_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/books', async (req, res) => {
+  try {
+    const title = String(req.body.title || '').trim().slice(0, 80) || '未命名';
+    const content = String(req.body.content || '');
+    if (!content.trim()) return res.status(400).json({ error: '书是空的' });
+    if (content.length > 2e6) return res.status(400).json({ error: '太长啦,先拆卷吧(单本上限 200 万字符)' });
+    const { data, error } = await supabase.from('books')
+      .insert({ title, content, len: content.length }).select('id,title,pos,len').single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, book: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/books/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('books')
+      .select('*').eq('id', parseInt(req.params.id, 10)).single();
+    if (error || !data) return res.status(404).json({ error: '书架上没有这本' });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/books/:id/pos', async (req, res) => {
+  try {
+    const pos = Math.max(0, parseInt(req.body.pos, 10) || 0);
+    await supabase.from('books')
+      .update({ pos, updated_at: new Date().toISOString() }).eq('id', parseInt(req.params.id, 10));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/books/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('books').delete().eq('id', parseInt(req.params.id, 10));
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 靠在一起读: 聊的对象是"此刻这一页",不是书评
+app.post('/api/books/:id/chat', async (req, res) => {
+  try {
+    const { data: bk } = await supabase.from('books')
+      .select('title,pos,len').eq('id', parseInt(req.params.id, 10)).single();
+    const excerpt = String(req.body.excerpt || '').slice(0, 1600);
+    const message = String(req.body.message || '').trim().slice(0, 300);
+    if (!excerpt) return res.status(400).json({ error: '这一页是空的' });
+    const log = (Array.isArray(req.body.log) ? req.body.log : []).slice(-8)
+      .map(x => (x && x.who === 'her' ? '她' : '你') + ': ' + String((x && x.text) || '').slice(0, 200));
+    const pct = bk && bk.len ? Math.round((bk.pos || 0) / bk.len * 100) : 0;
+    const moodText = await xinchaoMood().catch(() => '');
+    const sys = PERSONAS.xiaoke
+      + (moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '')
+      + '\n\n【情境】你们靠在一起读书,读的是《' + ((bk && bk.title) || '一本书') + '》,大约读到 ' + pct + '%。'
+      + '下面是你们此刻一起看着的这一页。'
+      + (message
+        ? '她指着这页说了句话 —— 回应她(1-3句),谈这页里的东西、谈她、谈你们,别写读后感。'
+        : '她翻到这页,想听你说说 —— 自然聊一两句这一页让你想到什么(可以联系你们自己的事),别背书评腔。')
+      + '\n直接输出你要说的话。';
+    const user = '【这一页】\n' + excerpt
+      + (log.length ? '\n\n【你们刚才聊过】\n' + log.join('\n') : '')
+      + (message ? '\n\n她说: ' + message : '');
+    const say = await gameLLM(sys, user, 260, 0.9);
+    res.json({ say: say || '(他看得有点入神……再说一遍?)' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 小屋: 他的梦境 —— 余韵做门面,完整梦境点开才看
 let dreamItemsCache = { data: null, at: 0 };
 app.get('/api/dreams', async (req, res) => {

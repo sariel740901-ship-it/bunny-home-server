@@ -82,6 +82,19 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .her .hb{font-size:13.5px;line-height:1.7;padding:3px 2px;word-break:break-word;text-align:right;opacity:0;transition:opacity .5s}
 .her .hb.show{opacity:1}
 
+/* 书房 */
+.page{background:color-mix(in srgb,var(--card) 88%,#e8dcc0);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:18px 17px;font-family:var(--serif);font-size:15px;line-height:2;white-space:pre-wrap;word-break:break-word;min-height:320px}
+@media(prefers-color-scheme:dark){.page{background:color-mix(in srgb,var(--card) 92%,#4a4234)}}
+.bk-item{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:14px;margin-bottom:10px;cursor:pointer}
+.bk-item:active{transform:scale(.985)}
+.bk-item .bt{flex:1;min-width:0}
+.bk-item .bn{font-family:var(--serif);font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-item .bp{font-size:11.5px;color:var(--muted);margin-top:3px}
+.bk-item .bx{border:none;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:6px}
+.bk-item .bx:hover{color:#e0524d;background:var(--bg2)}
+.bookadd{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;margin-bottom:14px}
+.emptyb{text-align:center;color:var(--muted);font-size:13.5px;font-family:var(--serif);padding:40px 0}
+
 /* 棋盘边聊天 */
 .chatrow{display:flex;gap:8px;margin-top:10px}
 .chatrow input{flex:1;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:10px;padding:9px 12px;font-size:13.5px;font-family:inherit;outline:none}
@@ -132,6 +145,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="gcard" onclick="go('tarot')"><svg class="gi" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="17" rx="2"/><path d="M12 8l2.4 3.5L12 15l-2.4-3.5z"/></svg><div><div class="gt">塔罗牌</div><div class="gd">抽一把,让他给你解 —— 他会带着你们的日子说</div></div></div>
     <div class="gcard" onclick="go('ttt')"><svg class="gi" viewBox="0 0 24 24"><path d="M9.2 4v16M14.8 4v16M4 9.2h16M4 14.8h16"/></svg><div><div class="gt">井字棋</div><div class="gd">经典 3×3,或九宫格套九宫格的大格玩法</div></div></div>
     <div class="gcard" onclick="go('gomoku')"><svg class="gi" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.4"/><circle cx="15.5" cy="15.5" r="3.4" fill="currentColor" stroke="none"/></svg><div><div class="gt">五子棋</div><div class="gd">十五路棋盘,他有个帮他看棋的小脑袋,不好糊弄</div></div></div>
+    <div class="gcard" onclick="go('book')"><svg class="gi" viewBox="0 0 24 24"><path d="M12 6C10.4 4.4 8.4 3.8 4 3.8v14.7c4.4 0 6.4.6 8 2.2 1.6-1.6 3.6-2.2 8-2.2V3.8c-4.4 0-6.4.6-8 2.2z"/><path d="M12 6v14.7"/></svg><div><div class="gt">书房</div><div class="gd">一起读一本书 —— 你翻到哪页,他看的就是哪页</div></div></div>
   </div>
 
   <!-- 井字棋(经典 + 大格) -->
@@ -160,6 +174,33 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="him"><div class="av">🐰</div><div class="hb" id="gmkSay"></div></div>
     <div class="her"><div class="av" data-herav>🌸</div><div class="hb" id="gmkMe"></div></div>
     <div class="chatrow"><input id="gmkChat" placeholder="跟他说句话…" maxlength="300"><button class="pill" id="gmkChatBtn">发送</button></div>
+  </div>
+
+  <!-- 书房 -->
+  <div id="vBook" class="hide">
+    <div id="shelf">
+      <div class="ctrl"><button class="pill accent" onclick="bookAddUI(true)">＋ 添一本书</button></div>
+      <div class="bookadd hide" id="bookAdd">
+        <input id="bkTitle" class="tq" style="margin-bottom:8px" placeholder="书名">
+        <textarea id="bkText" class="tq" rows="6" placeholder="把正文粘贴进来,或选一个 .txt 文件(要 UTF-8 编码)"></textarea>
+        <div class="ctrl">
+          <button class="pill" onclick="document.getElementById('bkFile').click()">选 .txt</button>
+          <input type="file" id="bkFile" accept=".txt,text/plain" style="display:none">
+          <span class="status" id="bkInfo"></span>
+          <button class="pill" style="margin-left:auto" onclick="bookAddUI(false)">取消</button>
+          <button class="pill accent" onclick="bookSave()">放上书架</button>
+        </div>
+      </div>
+      <div id="bookList"><div class="emptyb">书架空着 —— 添一本,和他一起读</div></div>
+    </div>
+    <div id="reader" class="hide">
+      <div class="ctrl"><button class="pill" onclick="closeReader()">书架</button><span class="status" id="pgInfo"></span></div>
+      <div class="page" id="pageBox"></div>
+      <div class="ctrl" style="justify-content:center;margin-top:10px"><button class="pill" onclick="turn(-1)">上一页</button><button class="pill" onclick="turn(1)">下一页</button></div>
+      <div class="him"><div class="av">🐰</div><div class="hb" id="bkSay"></div></div>
+      <div class="her"><div class="av" data-herav>🌸</div><div class="hb" id="bkMe"></div></div>
+      <div class="chatrow"><input id="bkChat" placeholder="聊聊这一页…(什么都不填直接发 = 让他说说)" maxlength="300"><button class="pill" id="bkChatBtn">发送</button></div>
+    </div>
   </div>
 
   <!-- 塔罗 -->
@@ -211,8 +252,8 @@ async function api(payload){
 }
 
 // ═══ 路由 ═══
-const VIEWS={home:'vHome',ttt:'vTtt',gomoku:'vGmk',tarot:'vTarot'};
-const TITLES={home:'和他玩',ttt:'井字棋',gomoku:'五子棋',tarot:'塔罗牌'};
+const VIEWS={home:'vHome',ttt:'vTtt',gomoku:'vGmk',tarot:'vTarot',book:'vBook'};
+const TITLES={home:'和他玩',ttt:'井字棋',gomoku:'五子棋',tarot:'塔罗牌',book:'书房'};
 let view='home';
 function go(v){
   view=v;
@@ -220,6 +261,7 @@ function go(v){
   document.getElementById('title').textContent=TITLES[v];
   if(v==='ttt')tttReset(false);
   if(v==='gomoku')gmkInit();
+  if(v==='book')refreshBooks();
 }
 document.getElementById('backBtn').onclick=()=>{view==='home'?location.href='/':go('home')};
 
@@ -551,6 +593,125 @@ bindBoardChat('gmkChat','gmkChatBtn','gomoku');
       el.style.backgroundSize='cover';el.style.backgroundPosition='center';el.textContent='';
     });
   }catch(e){}
+})();
+
+// ═══ 书房 ═══
+let books=[],curBook=null,bkPages=[],bkOffs=[],bkIdx=0,bkLog=[],posTimer=0;
+function bookAddUI(show){
+  document.getElementById('bookAdd').classList.toggle('hide',show===false);
+  if(show===true)document.getElementById('bkTitle').focus();
+}
+document.getElementById('bkFile').onchange=e=>{
+  const f=e.target.files&&e.target.files[0];
+  e.target.value='';
+  if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    document.getElementById('bkText').value=String(rd.result||'');
+    document.getElementById('bkInfo').textContent=f.name+' · '+Math.round((rd.result||'').length/1000)+'k 字符';
+    if(!document.getElementById('bkTitle').value)document.getElementById('bkTitle').value=f.name.replace(/\.txt$/i,'');
+  };
+  rd.readAsText(f);
+};
+async function bookSave(){
+  const title=document.getElementById('bkTitle').value.trim();
+  const content=document.getElementById('bkText').value;
+  if(!content.trim())return;
+  const r=await fetch('/api/books',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,content})});
+  if(!r.ok){const d=await r.json().catch(()=>({}));alert(d.error||'没放上去 — books 表建了吗?(supabase_schema.sql 第 6 段)');return}
+  document.getElementById('bkTitle').value='';document.getElementById('bkText').value='';
+  document.getElementById('bkInfo').textContent='';
+  bookAddUI(false);refreshBooks();
+}
+async function refreshBooks(){
+  try{
+    const r=await fetch('/api/books');
+    if(!r.ok)throw 0;
+    books=await r.json();
+  }catch(e){books=[]}
+  const host=document.getElementById('bookList');host.innerHTML='';
+  if(!books.length){host.innerHTML='<div class="emptyb">书架空着 —— 添一本,和他一起读</div>';return}
+  for(const b of books){
+    const d=document.createElement('div');d.className='bk-item';
+    const pct=b.len?Math.min(100,Math.round((b.pos||0)/b.len*100)):0;
+    d.innerHTML='<div class="bt"><div class="bn"></div><div class="bp">读到 '+pct+'% · 共约 '+Math.round((b.len||0)/1000)+'k 字</div></div><button class="bx">✕</button>';
+    d.querySelector('.bn').textContent=b.title||'未命名';
+    d.onclick=()=>openBook(b.id);
+    d.querySelector('.bx').onclick=async ev=>{
+      ev.stopPropagation();
+      if(!confirm('把《'+(b.title||'未命名')+'》从书架拿掉?阅读进度也会一起消失。'))return;
+      await fetch('/api/books/'+b.id,{method:'DELETE'}).catch(()=>{});
+      refreshBooks();
+    };
+    host.appendChild(d);
+  }
+}
+function paginate(text){
+  const ps=[],offs=[];let i=0;
+  while(i<text.length){
+    let end=Math.min(text.length,i+560);
+    if(end<text.length){
+      const win=text.slice(i+380,i+700);
+      const cut=Math.max(win.lastIndexOf('\n'),win.lastIndexOf('。'),win.lastIndexOf('!'),win.lastIndexOf('?'),win.lastIndexOf('!'),win.lastIndexOf('?'));
+      if(cut>=0)end=i+380+cut+1;
+    }
+    offs.push(i);ps.push(text.slice(i,end));i=end;
+  }
+  return{ps,offs};
+}
+async function openBook(id){
+  const r=await fetch('/api/books/'+id);
+  if(!r.ok)return;
+  curBook=await r.json();
+  const p=paginate(curBook.content||'');
+  bkPages=p.ps;bkOffs=p.offs;bkLog=[];
+  bkIdx=0;
+  for(let i=bkOffs.length-1;i>=0;i--)if(bkOffs[i]<=(curBook.pos||0)){bkIdx=i;break}
+  document.getElementById('shelf').classList.add('hide');
+  document.getElementById('reader').classList.remove('hide');
+  say('bkSay','');
+  renderPage();
+}
+function closeReader(){
+  curBook=null;
+  document.getElementById('reader').classList.add('hide');
+  document.getElementById('shelf').classList.remove('hide');
+  refreshBooks();
+}
+function renderPage(){
+  if(!curBook)return;
+  document.getElementById('pageBox').textContent=bkPages[bkIdx]||'(这一页是空的)';
+  const pct=curBook.len?Math.round(bkOffs[bkIdx]/curBook.len*100):0;
+  document.getElementById('pgInfo').textContent='《'+curBook.title+'》 '+(bkIdx+1)+'/'+bkPages.length+' 页 · '+pct+'%';
+  clearTimeout(posTimer);
+  posTimer=setTimeout(()=>{ // 翻页停稳 2 秒才存进度,不刷接口
+    if(curBook)fetch('/api/books/'+curBook.id+'/pos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pos:bkOffs[bkIdx]})}).catch(()=>{});
+  },2000);
+}
+function turn(d){
+  if(!curBook)return;
+  bkIdx=Math.max(0,Math.min(bkPages.length-1,bkIdx+d));
+  renderPage();
+}
+(function(){
+  const inp=document.getElementById('bkChat'),btn=document.getElementById('bkChatBtn');
+  let sending=false;
+  const send=async()=>{
+    if(!curBook||sending)return;
+    const v=inp.value.trim();
+    sending=true;inp.value='';
+    if(v)showMe('bkMe',v);
+    bkLog.push({who:'her',text:v||'(她翻到这页,想听你说说)'});
+    say('bkSay','…',true);
+    const d=await fetch('/api/books/'+curBook.id+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({excerpt:bkPages[bkIdx]||'',message:v,log:bkLog.slice(-8)})}).then(r=>r.json()).catch(()=>null);
+    sending=false;
+    const reply=(d&&d.say)||'';
+    if(reply)bkLog.push({who:'him',text:reply});
+    if(bkLog.length>16)bkLog.splice(0,bkLog.length-16);
+    say('bkSay',reply||'(他看得有点入神…)');
+  };
+  btn.onclick=send;
+  inp.onkeydown=e=>{if(e.key==='Enter')send()};
 })();
 
 // 动态红点

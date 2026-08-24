@@ -49,7 +49,18 @@ CREATE TABLE IF NOT EXISTS moment_comments (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前只有自发醒来 wake_enabled)
+-- 6. 书房 — 一起读书: 她放书上架,读到哪他看到哪(pos = 当前页起点的字符偏移)
+CREATE TABLE IF NOT EXISTS books (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '未命名',
+  content TEXT NOT NULL,
+  len INTEGER NOT NULL DEFAULT 0,
+  pos INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前只有自发醒来 wake_enabled)
 CREATE TABLE IF NOT EXISTS flags (
   key TEXT PRIMARY KEY,
   value JSONB,
