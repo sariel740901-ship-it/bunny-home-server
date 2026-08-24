@@ -60,6 +60,16 @@ CREATE TABLE IF NOT EXISTS books (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 8. 记忆兜底 — 记忆库不在线时,他要存的记忆先攒在这里,回线后自动补写并删除
+CREATE TABLE IF NOT EXISTS pending_holds (
+  id SERIAL PRIMARY KEY,
+  content TEXT NOT NULL,
+  why TEXT DEFAULT '',
+  meaning TEXT DEFAULT '',
+  tries INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前只有自发醒来 wake_enabled)
 CREATE TABLE IF NOT EXISTS flags (
   key TEXT PRIMARY KEY,
