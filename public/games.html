@@ -95,7 +95,8 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .bookadd{background:var(--card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:12px;margin-bottom:14px}
 /* 他的批注: 原文上的虚线笔迹 + 点开的小纸条 */
 .noted{border-bottom:1.5px dashed var(--accent);background:color-mix(in srgb,var(--accent) 9%,transparent);cursor:pointer;border-radius:2px}
-.nmark{font-size:9px;opacity:.8}
+.ncnt{font-size:8.5px;background:var(--accent);color:#fff;border-radius:7px;padding:0 4px;margin-left:2px;font-family:-apple-system,sans-serif;letter-spacing:0}
+.rav{display:inline-block;width:16px;height:16px;border-radius:5px;background-size:cover;background-position:center;vertical-align:-3px;margin-right:4px}
 .bknotepop{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:10px 13px;margin-top:8px;font-size:13px;line-height:1.8;cursor:pointer}
 .bknotepop b{font-size:11.5px;color:var(--muted);font-weight:500;display:block;margin-bottom:3px;letter-spacing:.3px}
 .bknotepop .bt2{font-family:var(--serif)}
@@ -710,7 +711,8 @@ function renderPage(){
     let e=Math.min(text.length,n.pos-pageStart+Math.max(1,(n.anchor||'').length));
     if(s<cur){if(e<=cur)continue;s=cur}
     html+=escHtml(text.slice(cur,s));
-    html+='<span class="noted" data-nid="'+n.id+'">'+escHtml(text.slice(s,e))+'<sup class="nmark">🐰</sup></span>';
+    const cnt=1+bkNotes.filter(x=>x.parent_id===n.id).length;
+    html+='<span class="noted" data-nid="'+n.id+'">'+escHtml(text.slice(s,e))+'<sup class="ncnt">'+cnt+'</sup></span>';
     cur=e;
   }
   html+=escHtml(text.slice(cur));
@@ -730,12 +732,25 @@ function renderPage(){
     if(curBook)fetch('/api/books/'+curBook.id+'/pos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pos:bkOffs[bkIdx]})}).catch(()=>{});
   },2000);
 }
+function decorAv(who){ // 装扮里传过自定义头像就用图,没有就只留名字
+  try{
+    const d=JSON.parse(localStorage.getItem('bunny_decor_v1')||'{}');
+    const v=String((who==='him'?d.kAv:d.myAv)||'');
+    if(v.startsWith('img:'))return v.slice(4);
+    if(v.startsWith('data:'))return v;
+  }catch(e){}
+  return '';
+}
+function noteAv(who){
+  const u=decorAv(who);
+  return u?'<span class="rav" style="background-image:url(\''+u+'\')"></span>':'';
+}
 function showBkNote(id){
   const n=bkNotes.find(x=>x.id===id);if(!n)return;
   const reps=bkNotes.filter(x=>x.parent_id===id);
   const p=document.getElementById('bkNotePop');
-  p.innerHTML='<b>🐰 小克的批注</b><div class="bt2">'+escHtml(n.content)+'</div>'
-    +reps.map(r=>'<div class="brep"><span class="ra">'+(r.author==='him'?'🐰 小克':'🌸 嘉嘉')+'</span> '+escHtml(r.content)+'</div>').join('')
+  p.innerHTML='<b>'+noteAv('him')+'小克的批注</b><div class="bt2">'+escHtml(n.content)+'</div>'
+    +reps.map(r=>'<div class="brep"><span class="ra">'+noteAv(r.author)+(r.author==='him'?'小克':'嘉嘉')+'</span> '+escHtml(r.content)+'</div>').join('')
     +'<div class="chatrow" style="margin-top:9px"><input maxlength="500" placeholder="回复他…"><button class="pill" data-rsend>发送</button></div>'
     +'<div class="bclose" onclick="hideBkNote()">收起</div>';
   const inp=p.querySelector('input');
