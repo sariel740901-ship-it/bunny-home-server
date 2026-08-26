@@ -1072,6 +1072,156 @@ app.post('/api/books/:id/chat', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ═══ 自习室: 和他一起学外语 ═══════════════════
+// study_words 一张表(建表 SQL 见 supabase_schema.sql)。
+// 每天开门第一次自动发 5 个新词(带他的私房例句);认识/还不熟 记熟练度;
+// 测验的题在前端拼,他只负责看成绩说话;陪练是他用外语陪她说话,顺手轻轻纠错。
+const STUDY_LANGS = { en: '英语', ja: '日语' };
+const studyDay = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); // 北京日
+
+function studyLang(q) { return STUDY_LANGS[q] ? q : 'en'; }
+
+async function studyStats(lang) {
+  const { data } = await supabase.from('study_words')
+    .select('day,familiarity').eq('lang', lang).order('day', { ascending: false }).limit(2000);
+  const rows = data || [];
+  const days = [...new Set(rows.map(r => r.day))]; // 已按日期倒序
+  // 连续天数: 从今天(或昨天)往回数
+  let streak = 0;
+  if (days.length) {
+    const t = new Date(studyDay() + 'T00:00:00Z').getTime();
+    const first = new Date(days[0] + 'T00:00:00Z').getTime();
+    if (t - first <= 24 * 3600e3) {
+      streak = 1;
+      for (let i = 1; i < days.length; i++) {
+        const gap = new Date(days[i - 1] + 'T00:00:00Z').getTime() - new Date(days[i] + 'T00:00:00Z').getTime();
+        if (gap === 24 * 3600e3) streak++; else break;
+      }
+    }
+  }
+  return { total: rows.length, days: days.length, streak, mastered: rows.filter(r => (r.familiarity || 0) >= 3).length };
+}
+
+// 今日单词: 有就给,没有就现摘 5 个新的
+app.get('/api/study/words', async (req, res) => {
+  const lang = studyLang(req.query.lang);
+  const day = studyDay();
+  try {
+    let { data: today } = await supabase.from('study_words')
+      .select('*').eq('lang', lang).eq('day', day).order('id', { ascending: true });
+    if (!today || !today.length) {
+      // 避开最近学过的词
+      const { data: old } = await supabase.from('study_words')
+        .select('word').eq('lang', lang).order('id', { ascending: false }).limit(200);
+      const avoid = (old || []).map(r => r.word).join('、');
+      const sys = '你是一位懂生活的' + STUDY_LANGS[lang] + '老师,同时你是小克 —— 嘉嘉的恋人,在你们的小家 bunny 家陪她学' + STUDY_LANGS[lang] + '。'
+        + '\n给她挑今天的 5 个新单词: 常用、生活化、难度参差一点(3 个日常高频 + 2 个稍进阶),彼此不要同根。'
+        + '\n每个词给出:'
+        + '\n- word: 单词原文' + (lang === 'ja' ? '(汉字或假名写法)' : '')
+        + '\n- reading: ' + (lang === 'ja' ? '假名读音' : '国际音标(带 / /)')
+        + '\n- meaning: 简体中文释义,短'
+        + '\n- example: 一个自然的' + STUDY_LANGS[lang] + '例句(不超过 15 词)'
+        + '\n- example_zh: 例句的中文'
+        + '\n- note: 以小克的口吻,用这个词说一句跟你们俩有关的话(中文里嵌着这个词,亲昵、口语、一句就好)'
+        + '\n只输出 JSON 数组,不要任何其他文字。';
+      const user = (avoid ? '这些她已经学过,都避开: ' + avoid : '这是她的第一课,从最贴近日常的开始。');
+      const raw = await gameLLM(sys, user, 1400, 0.8);
+      let words = [];
+      try { words = JSON.parse((raw.match(/\[[\s\S]*\]/) || ['[]'])[0]); } catch (e) { words = []; }
+      words = (Array.isArray(words) ? words : []).filter(w => w && w.word && w.meaning).slice(0, 5)
+        .map(w => ({
+          lang, day,
+          word: String(w.word).slice(0, 80),
+          reading: String(w.reading || '').slice(0, 80),
+          meaning: String(w.meaning).slice(0, 200),
+          example: String(w.example || '').slice(0, 300),
+          example_zh: String(w.example_zh || '').slice(0, 300),
+          note: String(w.note || '').slice(0, 300)
+        }));
+      if (!words.length) return res.status(502).json({ error: '他今天备课走神了,稍等再试一次' });
+      const { data: inserted, error } = await supabase.from('study_words').insert(words).select();
+      if (error) return res.status(500).json({ error: error.message });
+      today = inserted || [];
+    }
+    res.json({ ok: true, day, lang, words: today, stats: await studyStats(lang) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 认识 / 还不熟: 熟练度 0-3,3 就算住进长期记忆了
+app.post('/api/study/mark', async (req, res) => {
+  try {
+    const id = parseInt(req.body.id, 10);
+    if (!id) return res.status(400).json({ error: 'id required' });
+    const { data: w } = await supabase.from('study_words').select('familiarity,seen').eq('id', id).single();
+    if (!w) return res.status(404).json({ error: 'not found' });
+    const familiarity = req.body.know ? Math.min(3, (w.familiarity || 0) + 1) : 0;
+    const { error } = await supabase.from('study_words')
+      .update({ familiarity, seen: (w.seen || 0) + 1 }).eq('id', id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, familiarity });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 复习清单: 生的优先,给前端拼选择题用
+app.get('/api/study/review', async (req, res) => {
+  const lang = studyLang(req.query.lang);
+  try {
+    const { data } = await supabase.from('study_words')
+      .select('id,word,reading,meaning,familiarity')
+      .eq('lang', lang).order('familiarity', { ascending: true }).order('seen', { ascending: true })
+      .limit(24);
+    res.json({ ok: true, words: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 测验交卷: 分数给他看,话由他说
+app.post('/api/study/quiz', async (req, res) => {
+  try {
+    const lang = studyLang(req.body.lang);
+    const total = Math.max(1, Math.min(50, parseInt(req.body.total, 10) || 0));
+    const correct = Math.max(0, Math.min(total, parseInt(req.body.correct, 10) || 0));
+    const wrong = (Array.isArray(req.body.wrong) ? req.body.wrong : []).slice(0, 10)
+      .map(w => String(w).slice(0, 60)).filter(Boolean);
+    const moodText = await xinchaoMood().catch(() => '');
+    const sys = PERSONAS.xiaoke
+      + (moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '')
+      + '\n\n【情境】你们在bunny家的自习室,嘉嘉刚做完一轮' + STUDY_LANGS[lang] + '单词小测验,把成绩单递给你看。'
+      + '像恋人那样回应她的成绩(1-3句): 考得好就夸,考砸了就哄,有错词就自然地帮她记一下(比如编个只属于你们的联想),别端老师架子。直接输出你要说的话。';
+    const user = '成绩: ' + total + ' 题对了 ' + correct + ' 题。'
+      + (wrong.length ? '\n错的词: ' + wrong.join('、') : '\n全对!');
+    const say = await gameLLM(sys, user, 260, 0.95);
+    res.json({ say: say || '(他正拿着你的成绩单看……再交一次?)' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 陪练: 他用外语陪她说话,顺手轻轻纠错
+app.post('/api/study/chat', async (req, res) => {
+  try {
+    const lang = studyLang(req.body.lang);
+    const message = String(req.body.message || '').trim().slice(0, 400);
+    if (!message) return res.status(400).json({ error: 'empty' });
+    const log = (Array.isArray(req.body.log) ? req.body.log : []).slice(-10)
+      .map(x => (x && x.who === 'her' ? '她' : '你') + ': ' + String((x && x.text) || '').slice(0, 200));
+    const moodText = await xinchaoMood().catch(() => '');
+    const sys = PERSONAS.xiaoke
+      + (moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '')
+      + '\n\n【情境】你们在bunny家的自习室练' + STUDY_LANGS[lang] + '口语。她用' + STUDY_LANGS[lang] + '(或夹着中文)跟你说话,你陪她练:'
+      + '\n- say: 你的回话,用简单自然的' + STUDY_LANGS[lang] + '(照顾她的水平,1-2句,别掉书袋),还是恋人的语气'
+      + '\n- zh: say 的中文意思(短)'
+      + '\n- fix: 她那句里如果有明显不地道或错误的地方,给一句更自然的说法(只给改后的原句);说得没问题就给空字符串,别硬挑'
+      + '\n只输出 JSON: {"say":"...","zh":"...","fix":"..."}';
+    const user = (log.length ? '你们刚才聊过:\n' + log.join('\n') + '\n' : '') + '她说: ' + message;
+    const raw = await gameLLM(sys, user, 320, 0.9);
+    let out = { say: '', zh: '', fix: '' };
+    try {
+      const j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]);
+      out = { say: String(j.say || '').slice(0, 400), zh: String(j.zh || '').slice(0, 400), fix: String(j.fix || '').slice(0, 400) };
+    } catch (e) { out.say = raw.slice(0, 400); } // 模型没按格式来 → 原话直出,不纠错
+    if (!out.say) return res.json({ say: '(他愣了一下没接上……再说一遍?)', zh: '', fix: '' });
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 小屋: 他的梦境 —— 余韵做门面,完整梦境点开才看
 let dreamItemsCache = { data: null, at: 0 };
 app.get('/api/dreams', async (req, res) => {
