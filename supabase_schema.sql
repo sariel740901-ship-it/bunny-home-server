@@ -87,6 +87,23 @@ CREATE TABLE IF NOT EXISTS book_notes (
 -- 已建过老版 book_notes 的补列:
 -- ALTER TABLE book_notes ADD COLUMN IF NOT EXISTS parent_id INTEGER;
 
+-- 9. 自习室 — 和他一起学外语: 每天 5 个新词,familiarity 0(生)→3(熟),
+--    note 是小克用这个词说的私房话,day 是北京时间的 YYYY-MM-DD
+CREATE TABLE IF NOT EXISTS study_words (
+  id SERIAL PRIMARY KEY,
+  lang TEXT NOT NULL DEFAULT 'en',
+  word TEXT NOT NULL,
+  reading TEXT DEFAULT '',
+  meaning TEXT NOT NULL,
+  example TEXT DEFAULT '',
+  example_zh TEXT DEFAULT '',
+  note TEXT DEFAULT '',
+  day TEXT NOT NULL,
+  familiarity INTEGER DEFAULT 0,
+  seen INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前只有自发醒来 wake_enabled)
 CREATE TABLE IF NOT EXISTS flags (
   key TEXT PRIMARY KEY,
