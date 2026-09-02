@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS study_words (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前只有自发醒来 wake_enabled)
+-- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前有自发醒来 wake_enabled;
+--    棋摊(bunnylog/qitan.py)也把当前棋局存在这里,key='qitan',不用建新表)
 CREATE TABLE IF NOT EXISTS flags (
   key TEXT PRIMARY KEY,
   value JSONB,

@@ -734,7 +734,8 @@ async function gameLLM(sys, user, maxTokens, temp) {
   if (!resp.ok) { console.error('game llm http:', JSON.stringify(d).slice(0, 200)); return ''; }
   return String(d.choices?.[0]?.message?.content || '').trim();
 }
-const GAME_NAMES = { ttt: '井字棋', ultimate: '终极井字棋(大格)', gomoku: '五子棋' };
+const XQ = require('./public/xiangqi-core.js'); // 象棋规则引擎(和前端共用同一份)
+const GAME_NAMES = { ttt: '井字棋', ultimate: '终极井字棋(大格)', gomoku: '五子棋', xiangqi: '象棋' };
 app.post('/api/game', async (req, res) => {
   const { game } = req.body || {};
   try {
@@ -803,6 +804,13 @@ app.post('/api/game', async (req, res) => {
       const b = req.body.board.map(v => v === 'X' || v === 'O' ? v : '');
       cands = gmkCandidates(b, me, her).map((c, k) => ({ n: k + 1, move: c.i, why: c.why }));
       boardDesc = '五子棋进行到第 ' + b.filter(Boolean).length + ' 手,你执白(O)。';
+    } else if (game === 'xiangqi' && Array.isArray(req.body.board) && req.body.board.length === 90) {
+      const side = req.body.side === 'r' ? 'r' : 'b'; // 他执的颜色,默认黑
+      const b = XQ.sanitize(req.body.board);
+      const top = XQ.bestMoves(b, side, 4);
+      if (!top.length) return res.json({ move: null, say: '(他被将死了,一步都走不了)' });
+      cands = top.map((c, k) => ({ n: k + 1, move: [c.from, c.to], why: c.name + ' — ' + c.why }));
+      boardDesc = '象棋局面,你执' + (side === 'r' ? '红(大写)' : '黑(小写)') + ':\n' + XQ.boardText(b);
     } else {
       return res.status(400).json({ error: 'bad game payload' });
     }
