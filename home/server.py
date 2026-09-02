@@ -4,7 +4,7 @@
 现在: 只跑这一个(pythonw 无窗口),它把一家子全拉起来:
 
     voice-bar(8000) now-playing(8010) stackchan(8011)
-    douyin(8020) darkroom(8030) presence(8040) music-dj(3456)
+    douyin(8020) darkroom(8030) presence(8040) music-dj(3456) weather(8090)
 
 - 全部无窗口后台运行,stdout/stderr 落到 home/logs/<名字>.log
 - 谁掉了自动重启(退避 3s→10s→30s→60s,稳定跑满 1 分钟就清零)
@@ -42,6 +42,7 @@ DEFAULT_SERVICES = [
     {"name": "darkroom",    "title": "暗房",       "dir": "darkroom",    "cmd": ["server.py"],          "port": 8030},
     {"name": "presence",    "title": "时间的眼睛", "dir": "presence",    "cmd": ["server.py"],          "port": 8040},
     {"name": "music-dj",    "title": "DJ台",       "dir": "music-dj",    "cmd": ["server.py"],          "port": 3456},
+    {"name": "weather",     "title": "天窗",       "dir": "weather",     "cmd": ["server.py"],          "port": 8090},
 ]
 
 
