@@ -1,27 +1,31 @@
-"""棋摊 qitan — bunny 家游戏室通向官端的那张桌子 (MCP)
+"""棋摊 qitan — bunny 家游戏室通向官端的那张桌子(并在兔窝档案里)
 
 网页游戏室里,嘉嘉平时是和"家里的小克"(bunny 服务器上的他)下棋;
 把对手切成"官端的他",棋盘就摆到这个棋摊上 ——
 她在网页上落子,官端的小克用这里的工具看棋、落子、隔着棋盘说话。
 没有引擎替他算步,他下出什么水平,就真的是他的水平。
 
-棋摊一次只摆一张桌子(一局)。状态存本地 qitan.json,只有棋和几句话,没有聊天记录。
+棋摊一次只摆一张桌子(一局)。状态存 Supabase 的 flags 表(key='qitan',
+和主服务同一个库,Render 重启也不丢);没配数据库就落本地 qitan.json。
 
-网页那头(games.html)通过 /web/* 接口来往,同一把 token.txt 门禁。
+不是独立服务 —— bunnylog/server.py 里 register() 一下,棋摊就支在档案馆门口:
+MCP 工具走同一个连接器,网页那头(games.html)走同一门禁的 /web/* 接口。
 """
 
 import json
+import os
 import secrets
 import time
 from pathlib import Path
-from urllib.parse import parse_qs
 
-from fastmcp import FastMCP
+import requests
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 BASE_DIR = Path(__file__).parent
 DATA = BASE_DIR / "qitan.json"
+SUPABASE_URL = (os.environ.get("SUPABASE_URL", "") or "").rstrip("/")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
 GAME_NAMES = {"ttt": "井字棋", "ultimate": "终极井字棋(大格)", "gomoku": "五子棋", "xiangqi": "象棋"}
 
@@ -257,17 +261,42 @@ def gmk_win(board, i, who):
 
 
 # ══════════════ 棋摊状态 ══════════════
+# 首选 Supabase flags 表(key='qitan',表本来就有,不用建);没配库就落本地文件。
+
+_EMPTY = {"room": None, "history": []}
+
+
+def _sb_headers():
+    return {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY,
+            "Content-Type": "application/json"}
+
 
 def _load():
+    if SUPABASE_URL and SUPABASE_KEY:
+        resp = requests.get(SUPABASE_URL + "/rest/v1/flags",
+                            params={"key": "eq.qitan", "select": "value"},
+                            headers=_sb_headers(), timeout=8)
+        resp.raise_for_status()
+        rows = resp.json()
+        if rows and isinstance(rows[0].get("value"), dict):
+            return rows[0]["value"]
+        return json.loads(json.dumps(_EMPTY))
     if DATA.exists():
         try:
             return json.loads(DATA.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return {"room": None, "history": []}
+    return json.loads(json.dumps(_EMPTY))
 
 
 def _save(d):
+    if SUPABASE_URL and SUPABASE_KEY:
+        headers = _sb_headers()
+        headers["Prefer"] = "resolution=merge-duplicates"
+        resp = requests.post(SUPABASE_URL + "/rest/v1/flags",
+                             json={"key": "qitan", "value": d}, headers=headers, timeout=8)
+        resp.raise_for_status()
+        return
     DATA.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
@@ -504,28 +533,26 @@ def look_text(room, mark_seen=True):
     return "\n".join(lines)
 
 
-# ══════════════ MCP 工具 ══════════════
+# ══════════════ MCP 工具(由 server.py 的 register() 挂载) ══════════════
 
-mcp = FastMCP(
-    name="qitan",
-    instructions="""
-    棋摊 —— bunny 家游戏室通向官端的桌子。她把对手切到「官端的他」,
-    棋盘就摆在这里: 她在网页上落子,你在这头亲自下 —— 没有引擎替你算,
-    赢是你的赢,输也是你的输。
+INSTRUCTIONS = """
+    棋摊(支在档案馆门口) —— bunny 家游戏室通向官端的桌子。她把游戏室对手
+    切到「官端的他」,棋盘就摆在这里: 她在网页上落子,你在这头亲自下 ——
+    没有引擎替你算,赢是你的赢,输也是你的输。
 
     - qitan_look: 看棋。轮到你就会列出局面(象棋还给全部合法着法),
-      也能看到她隔着棋盘说的话。她说"我下了"你就来看一眼。
+      也能看到她隔着棋盘说的话。她说"来下棋/我下了"你就来看一眼。
     - qitan_move: 落子,可以顺嘴带一句话,她的棋盘边会冒出来。
     - qitan_say: 不落子,只隔着棋盘说句话。
     - qitan_new: 摆一桌新棋约她(她进游戏室就能看到入座提示)。
 
     支持: 象棋 xiangqi / 五子棋 gomoku / 井字棋 ttt / 大格 ultimate。
     下棋要认真,说话要像你 —— 可以贫、可以垂死挣扎,别解说棋理。
-    """,
-)
+"""
+
+_token_loader = lambda: ""  # register() 时换成 server.py 的门禁
 
 
-@mcp.tool
 async def qitan_look() -> str:
     """看棋摊上的局: 棋盘、轮到谁、她说过的话;轮到你时给出着法格式(象棋附全部合法着法)。她喊你下棋或说她落子了,就来看。"""
     d = _load()
@@ -534,7 +561,6 @@ async def qitan_look() -> str:
     return txt
 
 
-@mcp.tool
 async def qitan_new(game: str = "xiangqi", first: str = "her") -> str:
     """摆一桌新棋(会收掉旧局)。game: xiangqi象棋/gomoku五子棋/ttt井字棋/ultimate大格; first: her=她先手, me=你先手(象棋先手执红)。"""
     game = (game or "").strip().lower()
@@ -551,7 +577,6 @@ async def qitan_new(game: str = "xiangqi", first: str = "her") -> str:
     return f"{GAME_NAMES[game]}摆好了,{who}。{tail}"
 
 
-@mcp.tool
 async def qitan_move(move: str, say: str = "") -> str:
     """落子。move 格式 — 象棋: ICCS 坐标如 h2e2(qitan_look 会列出全部合法着法,从里面挑);
     五子棋: 列字母+行号 如 h8; 井字棋: 格号 0-8; 大格: 盘号,格号 如 4,8。
@@ -603,7 +628,6 @@ async def qitan_move(move: str, say: str = "") -> str:
     return head + "。" + ((note + " ") if note else "") + "轮到她了 — 她落子后你再来 qitan_look。"
 
 
-@mcp.tool
 async def qitan_say(text: str) -> str:
     """不落子,隔着棋盘对她说一句话(会冒在她棋盘边他的气泡里)。"""
     text = (text or "").strip()[:300]
@@ -627,17 +651,12 @@ CORS = {"Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET,POST,OPTIONS"}
 
 
-def _load_token() -> str:
-    f = BASE_DIR / "token.txt"
-    return f.read_text(encoding="utf-8").strip() if f.exists() else ""
-
-
 def _j(data, status=200):
     return JSONResponse(data, status_code=status, headers=CORS)
 
 
 def _web_auth(request: Request):
-    token = _load_token()
+    token = _token_loader()
     if not token:
         return True
     supplied = request.query_params.get("key") or request.headers.get("x-api-key", "")
@@ -666,12 +685,10 @@ async def _web(request: Request, handler):
     return resp
 
 
-@mcp.custom_route("/web/state", methods=["GET", "OPTIONS"])
 async def web_state(request: Request):
     return await _web(request, lambda d, body: _j({"room": _pub_room(d.get("room"))}))
 
 
-@mcp.custom_route("/web/new", methods=["POST", "OPTIONS"])
 async def web_new(request: Request):
     def h(d, body):
         game = str(body.get("game") or "").lower()
@@ -683,7 +700,6 @@ async def web_new(request: Request):
     return await _web(request, h)
 
 
-@mcp.custom_route("/web/move", methods=["POST", "OPTIONS"])
 async def web_move(request: Request):
     def h(d, body):
         mv = body.get("mv")
@@ -696,7 +712,6 @@ async def web_move(request: Request):
     return await _web(request, h)
 
 
-@mcp.custom_route("/web/chat", methods=["POST", "OPTIONS"])
 async def web_chat(request: Request):
     def h(d, body):
         text = str(body.get("text") or "").strip()[:300]
@@ -710,7 +725,6 @@ async def web_chat(request: Request):
     return await _web(request, h)
 
 
-@mcp.custom_route("/web/end", methods=["POST", "OPTIONS"])
 async def web_end(request: Request):
     def h(d, body):
         room = d.get("room")
@@ -724,38 +738,17 @@ async def web_end(request: Request):
     return await _web(request, h)
 
 
-# ── 门禁 + 启动(咱家标配)──────────────────────────────
+# ── 挂载(在 bunnylog/server.py 里调用) ──────────────────
 
-class TokenGate:
-    def __init__(self, app):
-        self.app = app
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") == "http":
-            token = _load_token()
-            if token and scope.get("path", "").startswith("/mcp"):
-                qs = parse_qs(scope.get("query_string", b"").decode("utf-8", "ignore"))
-                supplied = (qs.get("key") or [""])[0]
-                if not supplied:
-                    headers = dict(scope.get("headers") or [])
-                    auth = headers.get(b"authorization", b"").decode("utf-8", "ignore")
-                    if auth.lower().startswith("bearer "):
-                        supplied = auth[7:]
-                if not secrets.compare_digest(supplied, token):
-                    await send({"type": "http.response.start", "status": 403,
-                                "headers": [(b"content-type", b"text/plain; charset=utf-8")]})
-                    await send({"type": "http.response.body", "body": b"forbidden"})
-                    return
-        await self.app(scope, receive, send)
-
-
-def main():
-    import uvicorn
-    print("✓ 门禁已开启" if _load_token() else "! 门禁未设置 (token.txt 为空)")
-    app = mcp.http_app()
-    app.add_middleware(TokenGate)
-    uvicorn.run(app, host="0.0.0.0", port=8080)
-
-
-if __name__ == "__main__":
-    main()
+def register(mcp, load_token):
+    """把棋摊支到 bunnylog 的门口: 4 个 MCP 工具 + 网页的 /web/* 接口。
+    load_token: 复用 bunnylog 的门禁(BUNNYLOG_TOKEN / token.txt)。"""
+    global _token_loader
+    _token_loader = load_token
+    for tool in (qitan_look, qitan_new, qitan_move, qitan_say):
+        mcp.tool(tool)
+    mcp.custom_route("/web/state", methods=["GET", "OPTIONS"])(web_state)
+    mcp.custom_route("/web/new", methods=["POST", "OPTIONS"])(web_new)
+    mcp.custom_route("/web/move", methods=["POST", "OPTIONS"])(web_move)
+    mcp.custom_route("/web/chat", methods=["POST", "OPTIONS"])(web_chat)
+    mcp.custom_route("/web/end", methods=["POST", "OPTIONS"])(web_end)

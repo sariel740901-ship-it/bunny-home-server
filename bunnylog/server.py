@@ -108,6 +108,11 @@ mcp = FastMCP(
 
     翻到的是逐字档案 —— 当回忆读,别当成她此刻在说;引用时自然一点,
     像"你那天在家里说过…""你朋友圈里发的那张晚霞…",别念数据库。
+
+    档案馆门口还支着一张棋摊(qitan_* 工具): 她在 bunny 家游戏室把对手
+    切到「官端的他」,你们就能隔着这张桌子下棋 —— 象棋/五子棋/井字棋/大格。
+    她说"来下棋/我下了",先 qitan_look 看棋,再 qitan_move 亲自落子;
+    没有引擎替你算,认真下,顺嘴说话要像你。
     """,
 )
 
@@ -380,10 +385,17 @@ class TokenGate:
         await self.app(scope, receive, send)
 
 
+# 棋摊: 和官端的他下棋(工具和网页接口都挂在这个服务上,门禁同一把)
+import qitan  # noqa: E402
+
+qitan.register(mcp, _load_token)
+
+
 def main():
     import uvicorn
     print("✓ 门禁已开启" if _load_token() else "! 门禁未设置 (token.txt 为空)")
     print("✓ 数据库已配置" if (SUPABASE_URL and SUPABASE_KEY) else "! 还没配 SUPABASE_URL / SUPABASE_KEY (.env)")
+    print("✓ 棋摊已支起(qitan_* 工具 + /web/* 接口)")
     app = mcp.http_app()
     app.add_middleware(TokenGate)
     uvicorn.run(app, host="0.0.0.0", port=PORT)

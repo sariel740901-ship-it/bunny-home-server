@@ -774,16 +774,25 @@ let OPP=localStorage.getItem('qitan_opp')||'home';
 let qtGame='',qtSeq=0,qtChatSeen=0,qtStarting=false,qtPolling=false,qtMoveInflight=Promise.resolve();
 const QT_NAMES={ttt:'井字棋',ultimate:'大格',gomoku:'五子棋',xiangqi:'象棋'};
 const QT_BOARD_VIEWS={ttt:1,gomoku:1,xiangqi:1};
-function qtBase(){return(localStorage.getItem('qitan_base')||'https://qitan.jiakeparents.top').replace(/\/+$/,'')}
+function qtBase(silent){ // 棋摊并在兔窝档案(bunnylog)里,地址就是它的地址
+  let b=(localStorage.getItem('qitan_base')||'').trim();
+  if(!b&&!silent){
+    b=(prompt('棋摊支在兔窝档案(bunnylog)里 — 填它的地址\n(Render 部署: https://xxx.onrender.com;家里跑: http://电脑IP:8070)')||'').trim();
+    if(b)localStorage.setItem('qitan_base',b);
+  }
+  return b.replace(/\/+$/,'');
+}
 async function qtFetch(path,body,silent){
+  const base=qtBase(silent);
+  if(!base)return{error:'noaddr'};
   let key=localStorage.getItem('qitan_key')||'';
-  const doIt=k=>fetch(qtBase()+path+'?key='+encodeURIComponent(k),
+  const doIt=k=>fetch(base+path+'?key='+encodeURIComponent(k),
     body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{cache:'no-store'});
   let r;
   try{r=await doIt(key)}catch(e){return{error:'offline'}}
   while(r.status===401||r.status===403){
     if(silent)return{error:'nokey'};
-    const input=prompt('棋摊的门禁暗号(家里 qitan/token.txt 里那串)');
+    const input=prompt('兔窝档案的门禁暗号(BUNNYLOG_TOKEN / token.txt 那串)');
     if(input===null)return{error:'nokey'};
     key=input.trim();localStorage.setItem('qitan_key',key);
     try{r=await doIt(key)}catch(e){return{error:'offline'}}
@@ -827,7 +836,7 @@ async function qtEnter(gameKey){
   qtLocalReset(gameKey,false);
   qtStatusMsg('去棋摊看看…');
   const d=await qtFetch('/web/state');
-  if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 家里电脑上的 qitan 服务开着吗?':'棋摊出错: '+d.error);return}
+  if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 兔窝档案(bunnylog)在线吗?(Render 冷启动要等半分钟)':d.error==='noaddr'?'没填棋摊地址 — 再点一次重试':'棋摊出错: '+d.error);return}
   const room=d.room;
   if(room&&room.status==='playing'&&room.game===gameKey)qtRestore(room);
   else if(room&&room.status==='playing')qtStatusMsg('棋摊上还摆着一局'+(QT_NAMES[room.game]||'棋')+'没下完 — 点「重开」就把那局收了摆新的');
@@ -837,7 +846,7 @@ async function qtStart(gameKey,himFirst){
   qtGame=gameKey;
   qtLocalReset(gameKey,himFirst);
   const d=await qtFetch('/web/new',{game:gameKey,himFirst:!!himFirst});
-  if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 家里电脑上的 qitan 服务开着吗?':'棋摊没摆上('+d.error+')');return}
+  if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 兔窝档案(bunnylog)在线吗?(Render 冷启动要等半分钟)':d.error==='noaddr'?'没填棋摊地址 — 再点一次重试':'棋摊没摆上('+d.error+')');return}
   qtSeq=(d.room.moves||[]).length;qtChatSeen=(d.room.chat||[]).length;
   if(himFirst)qtSetBusy(true);
 }
