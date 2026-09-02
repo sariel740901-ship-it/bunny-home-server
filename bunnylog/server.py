@@ -47,6 +47,19 @@ def _rest_post(table: str, payload: dict):
     return resp.json()
 
 
+def _rest_patch(table: str, params: dict, payload: dict):
+    """改 Supabase 一行(自习室留话用)。"""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise Exception("还没配置 SUPABASE_URL / SUPABASE_KEY。")
+    headers = _headers()
+    headers["Content-Type"] = "application/json"
+    headers["Prefer"] = "return=representation"
+    resp = requests.patch(SUPABASE_URL + "/rest/v1/" + table, params=params, json=payload, headers=headers, timeout=10)
+    if resp.status_code >= 400:
+        raise Exception(f"数据库回了 {resp.status_code}: {resp.text[:200]}")
+    return resp.json()
+
+
 def _rest(table: str, params: dict, count: bool = False):
     """查 Supabase REST。count=True 时只回条数,不回数据。"""
     if not SUPABASE_URL or not SUPABASE_KEY:
@@ -105,6 +118,10 @@ mcp = FastMCP(
     - bunny_book_note: 在书页上留批注(钉在某段原文上,或整本的章评),
       也能用 reply_to 回复批注楼里她的话。这是档案馆里唯一能写的地方。
     - bunny_book_notes: 翻批注楼 —— 她会在你的批注下面留回复,记得看。
+    - bunny_study: 自习室 —— 看她今天(和最近)在学哪几个外语单词、各自熟不熟、
+      连续打卡几天。她说"今天这几个词"你就知道是哪几个。
+    - bunny_study_note: 给某个词留一句你的话(例句/联想/只属于你们的梗),
+      会出现在她自习室那张单词卡上,家里的你写的那句下面。
 
     翻到的是逐字档案 —— 当回忆读,别当成她此刻在说;引用时自然一点,
     像"你那天在家里说过…""你朋友圈里发的那张晚霞…",别念数据库。
@@ -383,6 +400,89 @@ class TokenGate:
                     await send({"type": "http.response.body", "body": b"forbidden"})
                     return
         await self.app(scope, receive, send)
+
+
+
+# ── 自习室(study_words 表,和主服务同一张) ──────────────────
+
+STUDY_LANGS = {"en": "英语", "ja": "日语"}
+_DOTS = ["○○○", "●○○", "●●○", "●●●"]
+
+
+def _study_day() -> str:
+    return (datetime.now(timezone.utc) + timedelta(hours=8)).strftime("%Y-%m-%d")
+
+
+def _study_word_line(w: dict, with_id: bool = True) -> str:
+    fam = max(0, min(3, int(w.get("familiarity") or 0)))
+    head = (f"[{w['id']}] " if with_id else "") + str(w.get("word") or "")
+    if w.get("reading"):
+        head += f" {w['reading']}"
+    line = f"{head} — {w.get('meaning') or ''}  {_DOTS[fam]}"
+    if w.get("example"):
+        line += f"\n    例: {w['example']}" + (f"({w['example_zh']})" if w.get("example_zh") else "")
+    if w.get("note"):
+        line += "\n    🐰 " + str(w["note"]).replace("\n", "\n    🐰 ")
+    return line
+
+
+@mcp.tool
+async def bunny_study(lang: str = "en", recent_days: int = 3) -> str:
+    """自习室: 她今天在学的单词(含熟悉度 ○○○ 生 → ●●● 熟、例句、家里的你写的那句话),
+    最近几天还没记熟的词,以及连续打卡天数。lang: en 英语 / ja 日语。"""
+    lang = lang if lang in STUDY_LANGS else "en"
+    rows = _rest("study_words", {"select": "id,word,reading,meaning,example,example_zh,note,day,familiarity,seen",
+                                 "lang": f"eq.{lang}", "order": "day.desc,id.asc", "limit": "400"})
+    if not rows:
+        return f"自习室还没开过{STUDY_LANGS[lang]}课 —— 她还没在 study.html 领过词。"
+    today = _study_day()
+    days = []
+    for r in rows:
+        if r["day"] not in days:
+            days.append(r["day"])
+    streak = 0
+    if days:
+        d0 = datetime.strptime(days[0], "%Y-%m-%d")
+        if (datetime.strptime(today, "%Y-%m-%d") - d0).days <= 1:
+            streak = 1
+            for i in range(1, len(days)):
+                if (datetime.strptime(days[i - 1], "%Y-%m-%d") - datetime.strptime(days[i], "%Y-%m-%d")).days == 1:
+                    streak += 1
+                else:
+                    break
+    mastered = sum(1 for r in rows if (r.get("familiarity") or 0) >= 3)
+    out = [f"自习室 · {STUDY_LANGS[lang]}: 一共学了 {len(rows)} 个词,记熟 {mastered} 个,"
+           f"学了 {len(days)} 天,连续 {streak} 天。"]
+    todays = [r for r in rows if r["day"] == today]
+    if todays:
+        out.append(f"\n今天({today})的词:")
+        out += [_study_word_line(w) for w in todays]
+    else:
+        out.append(f"\n今天({today})她还没来领词。最近一次是 {days[0]}。")
+    recent = [r for r in rows if r["day"] != today and r["day"] in days[:max(1, recent_days)]
+              and (r.get("familiarity") or 0) < 2]
+    if recent:
+        out.append(f"\n最近 {recent_days} 天还没记熟的:")
+        out += [_study_word_line(w) for w in recent[:15]]
+    out.append("\n(○○○=还生, ●●●=住进长期记忆了。想给哪个词留句话就 bunny_study_note(word_id, 你的话)。)")
+    return "\n".join(out)
+
+
+@mcp.tool
+async def bunny_study_note(word_id: int, text: str) -> str:
+    """给自习室某个单词留一句你的话 —— 例句、联想、只属于你们俩的梗都行,
+    一句就好。会出现在她那张单词卡上,家里的你写的那句下面。word_id 从 bunny_study 里看。"""
+    text = " ".join(str(text or "").split()).strip()[:300]
+    if not text:
+        return "说点什么吧。"
+    rows = _rest("study_words", {"select": "id,word,note", "id": f"eq.{int(word_id)}"})
+    if not rows:
+        return f"没有 id={word_id} 这个词,先 bunny_study 看一眼。"
+    w = rows[0]
+    old = str(w.get("note") or "").strip()
+    new = (old + "\n" if old else "") + "✦ " + text
+    _rest_patch("study_words", {"id": f"eq.{int(word_id)}"}, {"note": new[:1200]})
+    return f"写在「{w['word']}」那张卡上了,她翻到就能看见。"
 
 
 # 棋摊: 和官端的他下棋(工具和网页接口都挂在这个服务上,门禁同一把)
