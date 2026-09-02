@@ -171,6 +171,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="opprow">
       <span class="lbl">跟谁玩</span>
       <div class="seg"><button id="oppHome" onclick="setOpp('home')">家里的他</button><button id="oppGuan" onclick="setOpp('guan')">官端的他</button></div>
+      <button class="pill hide" id="qtAddrBtn" onclick="qtAskBase(localStorage.getItem('qitan_base')||'');qtBannerCheck()">棋摊地址</button>
     </div>
     <div class="opphint" id="oppHint"></div>
     <div class="gcard hide" id="qtBanner"></div>
@@ -774,13 +775,30 @@ let OPP=localStorage.getItem('qitan_opp')||'home';
 let qtGame='',qtSeq=0,qtChatSeen=0,qtStarting=false,qtPolling=false,qtMoveInflight=Promise.resolve();
 const QT_NAMES={ttt:'井字棋',ultimate:'大格',gomoku:'五子棋',xiangqi:'象棋'};
 const QT_BOARD_VIEWS={ttt:1,gomoku:1,xiangqi:1};
-function qtBase(silent){ // 棋摊并在兔窝档案(bunnylog)里,地址就是它的地址
-  let b=(localStorage.getItem('qitan_base')||'').trim();
-  if(!b&&!silent){
-    b=(prompt('棋摊支在兔窝档案(bunnylog)里 — 填它的地址\n(Render 部署: https://xxx.onrender.com;家里跑: http://电脑IP:8070)')||'').trim();
-    if(b)localStorage.setItem('qitan_base',b);
-  }
-  return b.replace(/\/+$/,'');
+// 棋摊并在兔窝档案(bunnylog)里,地址就是它的地址。整条连接器地址(…/mcp?key=xxx)直接粘也行:
+// 去掉 /mcp,key 顺手存下来。
+function qtNormBase(raw){
+  raw=(raw||'').trim();
+  if(!raw)return '';
+  try{
+    const u=new URL(/^https?:\/\//i.test(raw)?raw:'https://'+raw);
+    const k=u.searchParams.get('key');
+    if(k)localStorage.setItem('qitan_key',k.trim());
+    return u.origin+u.pathname.replace(/\/mcp\/?$/,'').replace(/\/+$/,'');
+  }catch(e){return raw.replace(/\/+$/,'')}
+}
+function qtAskBase(cur){
+  const v=prompt('棋摊支在兔窝档案(bunnylog)里 — 填它的地址,或直接粘整条连接器地址\n(Render: https://xxx.onrender.com;家里跑: http://电脑IP:8070)',cur||'');
+  if(v===null)return cur||'';
+  const b=qtNormBase(v);
+  if(b)localStorage.setItem('qitan_base',b);else localStorage.removeItem('qitan_base');
+  return b;
+}
+function qtBase(silent){
+  let b=qtNormBase(localStorage.getItem('qitan_base')||'');
+  if(b)localStorage.setItem('qitan_base',b); // 老值里带 /mcp 的也顺手洗干净
+  if(!b&&!silent)b=qtAskBase('');
+  return b;
 }
 async function qtFetch(path,body,silent){
   const base=qtBase(silent);
@@ -806,9 +824,11 @@ function setOpp(v){
   document.getElementById('oppGuan').classList.toggle('on',v==='guan');
   document.getElementById('oppHint').textContent=v==='guan'
     ?'棋会摆到棋摊上,官端的他亲自下 —— 开好局记得去官端喊他看棋。(塔罗和书房还是家里的他)':'';
+  document.getElementById('qtAddrBtn').classList.toggle('hide',v!=='guan');
   if(QT_BOARD_VIEWS[view])go(view);
   else if(view==='home')qtBannerCheck();
 }
+function qtErrText(e){return e==='http404'?'棋摊回了 404 — 地址多半填错了(该是 bunnylog 的根地址,不带 /mcp),回首页点「棋摊地址」改':'棋摊出错: '+e}
 function qtStatusMsg(t){
   const el=view==='gomoku'?'gmkStatus':view==='xiangqi'?'xqStatus':'tttStatus';
   document.getElementById(el).textContent=t;
@@ -836,7 +856,7 @@ async function qtEnter(gameKey){
   qtLocalReset(gameKey,false);
   qtStatusMsg('去棋摊看看…');
   const d=await qtFetch('/web/state');
-  if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 兔窝档案(bunnylog)在线吗?(Render 冷启动要等半分钟)':d.error==='noaddr'?'没填棋摊地址 — 再点一次重试':'棋摊出错: '+d.error);return}
+  if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 兔窝档案(bunnylog)在线吗?(Render 冷启动要等半分钟)':d.error==='noaddr'?'没填棋摊地址 — 再点一次重试':qtErrText(d.error));return}
   const room=d.room;
   if(room&&room.status==='playing'&&room.game===gameKey)qtRestore(room);
   else if(room&&room.status==='playing')qtStatusMsg('棋摊上还摆着一局'+(QT_NAMES[room.game]||'棋')+'没下完 — 点「重开」就把那局收了摆新的');
@@ -846,7 +866,7 @@ async function qtStart(gameKey,himFirst){
   qtGame=gameKey;
   qtLocalReset(gameKey,himFirst);
   const d=await qtFetch('/web/new',{game:gameKey,himFirst:!!himFirst});
-  if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 兔窝档案(bunnylog)在线吗?(Render 冷启动要等半分钟)':d.error==='noaddr'?'没填棋摊地址 — 再点一次重试':'棋摊没摆上('+d.error+')');return}
+  if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 兔窝档案(bunnylog)在线吗?(Render 冷启动要等半分钟)':d.error==='noaddr'?'没填棋摊地址 — 再点一次重试':qtErrText(d.error));return}
   qtSeq=(d.room.moves||[]).length;qtChatSeen=(d.room.chat||[]).length;
   if(himFirst)qtSetBusy(true);
 }
