@@ -77,6 +77,22 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .qopt.bad{border-color:var(--bad);color:var(--bad)}
 .qscore{text-align:center;font-family:var(--serif);font-size:17px;margin:26px 0 8px}
 
+/* 拼写 */
+.spMean{font-family:var(--serif);font-size:22px;font-weight:600;text-align:center;margin:26px 0 6px}
+.spEx{text-align:center;font-size:13.5px;line-height:1.8;color:var(--muted);font-family:var(--serif);margin-bottom:4px}
+.spHint{text-align:center;font-size:15px;letter-spacing:3px;color:var(--muted);min-height:22px;margin-bottom:14px;font-family:var(--serif)}
+.spRow{display:flex;gap:8px;max-width:400px;margin:0 auto}
+.spRow input{flex:1;border:1.5px solid var(--border);border-radius:12px;background:var(--card);color:var(--text);padding:11px 14px;font-size:17px;font-family:var(--serif);outline:none;text-align:center;letter-spacing:1px}
+.spRow input:focus{border-color:var(--accent)}
+.spRow input.good{border-color:var(--good);color:var(--good)}
+.spRow input.bad{border-color:var(--bad)}
+.spFb{text-align:center;font-size:14px;margin-top:14px;min-height:24px;line-height:1.7}
+.spFb .ans{font-family:var(--serif);font-size:17px;font-weight:600}
+.spFb.right{color:var(--good)}
+.spFb.wrong .ans{color:var(--good)}
+.spFb.wrong .mine{color:var(--bad);text-decoration:line-through}
+.spCtl{display:flex;gap:8px;justify-content:center;margin-top:14px}
+
 /* 他的话 / 陪练气泡 */
 .him{display:flex;gap:10px;margin:16px 0 0;min-height:44px}
 .him .av{width:36px;height:36px;border-radius:10px;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;box-shadow:var(--shadow)}
@@ -113,6 +129,7 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
     <div class="ctrl">
       <div class="seg"><button id="langEn" onclick="setLang('en')">英语</button><button id="langJa" onclick="setLang('ja')">日语</button></div>
       <button class="pill" onclick="openQuiz()">小测验</button>
+      <button class="pill" onclick="openSpell()">拼写</button>
       <button class="pill accent" onclick="openTalk()">陪我说</button>
     </div>
     <div class="stats" id="stats"></div>
@@ -129,6 +146,18 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
     <div class="him hide" id="qSayRow"><div class="av">🐰</div><div class="hb" id="qSay"></div></div>
     <div class="ctrl hide" id="qEndCtrl" style="justify-content:center;margin-top:14px">
       <button class="pill" onclick="openQuiz()">再来一轮</button>
+      <button class="pill accent" onclick="goHome()">回自习室</button>
+    </div>
+  </div>
+
+  <!-- 拼写 -->
+  <div id="vSpell" class="hide">
+    <div class="ctrl"><span class="status" id="spProg"></span></div>
+    <div id="spBody"></div>
+    <div class="qscore hide" id="spScore"></div>
+    <div class="him hide" id="spSayRow"><div class="av">🐰</div><div class="hb" id="spSay"></div></div>
+    <div class="ctrl hide" id="spEndCtrl" style="justify-content:center;margin-top:14px">
+      <button class="pill" onclick="openSpell()">再来一轮</button>
       <button class="pill accent" onclick="goHome()">回自习室</button>
     </div>
   </div>
@@ -182,8 +211,9 @@ function show(v){
   view=v;
   document.getElementById('vHome').classList.toggle('hide',v!=='home');
   document.getElementById('vQuiz').classList.toggle('hide',v!=='quiz');
+  document.getElementById('vSpell').classList.toggle('hide',v!=='spell');
   document.getElementById('vTalk').classList.toggle('hide',v!=='talk');
-  document.getElementById('title').textContent=v==='quiz'?'小测验':v==='talk'?'陪我说':'自习室';
+  document.getElementById('title').textContent=v==='quiz'?'小测验':v==='spell'?'拼写':v==='talk'?'陪我说':'自习室';
 }
 document.getElementById('backBtn').onclick=()=>{ if(view==='home')location.href='/games.html'; else goHome(); };
 function goHome(){show('home')}
@@ -313,6 +343,109 @@ async function endQuiz(){
     const d=await r.json();
     say.className='hb';say.textContent=d.say||'…';
   }catch(e){say.className='hb';say.textContent='(他的话没送到…不过分数你自己也看到啦)'}
+}
+
+// ── 拼写: 看中文默写单词 ──
+let spell=null;
+function spNorm(s){
+  s=String(s||'').trim();
+  return lang==='en'?s.toLowerCase().replace(/\s+/g,' '):s.replace(/\s+/g,'');
+}
+async function openSpell(){
+  show('spell');
+  ['spScore','spSayRow','spEndCtrl'].forEach(i=>document.getElementById(i).classList.add('hide'));
+  document.getElementById('spBody').innerHTML='<div class="empty">他在挑要默的词…</div>';
+  document.getElementById('spProg').textContent='';
+  try{
+    const r=await fetch('/api/study/review?lang='+lang);
+    const d=await r.json();
+    const pool=(d.words||[]);
+    if(!pool.length){
+      document.getElementById('spBody').innerHTML='<div class="empty">还没有词可以默 —— 先去把今天的单词学了。</div>';
+      document.getElementById('spEndCtrl').classList.remove('hide');
+      document.getElementById('spEndCtrl').firstElementChild.classList.add('hide');
+      return;
+    }
+    document.getElementById('spEndCtrl').firstElementChild.classList.remove('hide');
+    const qs=[...pool].sort(()=>Math.random()-.5).slice(0,Math.min(8,pool.length));
+    spell={qs,i:0,correct:0,wrong:[],hints:0};
+    nextSp();
+  }catch(e){document.getElementById('spBody').innerHTML='<div class="empty">连不上家里…</div>'}
+}
+function nextSp(){
+  if(spell.i>=spell.qs.length)return endSpell();
+  const q=spell.qs[spell.i];
+  spell.hints=0;
+  document.getElementById('spProg').textContent=(spell.i+1)+' / '+spell.qs.length;
+  // 例句里的词挖成空 —— 挖不掉就不放例句,免得把答案递出去
+  let ex='';
+  if(q.example){
+    const re=lang==='en'?new RegExp(q.word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'ig'):null;
+    if(re&&re.test(q.example))ex=q.example.replace(re,'＿＿');
+    else if(lang!=='en'&&q.example.includes(q.word))ex=q.example.split(q.word).join('＿＿');
+  }
+  document.getElementById('spBody').innerHTML=
+    '<div class="spMean">'+esc(q.meaning)+'</div>'
+    +(ex?'<div class="spEx">'+esc(ex)+'</div>':'')
+    +'<div class="spHint" id="spHint"></div>'
+    +'<div class="spRow"><input id="spIn" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="'+(lang==='en'?'把单词拼出来':'把这个词写出来')+'"></div>'
+    +'<div class="spFb" id="spFb"></div>'
+    +'<div class="spCtl"><button class="pill" onclick="spHintMore()">提示一下</button>'
+    +'<button class="pill accent" onclick="spCheck()">写好了</button></div>';
+  const inp=document.getElementById('spIn');
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')spCheck()});
+  setTimeout(()=>inp.focus(),50);
+}
+function spHintMore(){
+  const q=spell.qs[spell.i];
+  spell.hints++;
+  const chars=[...q.word];
+  const shown=Math.min(spell.hints,chars.length-1);
+  let mask=chars.map((c,i)=>i<shown?c:(c===' '?' ':'·')).join(' ');
+  if(lang==='ja'&&q.reading&&spell.hints>=2)mask+='　('+q.reading+')';
+  document.getElementById('spHint').textContent=mask;
+}
+let spLock=false;
+function spCheck(){
+  if(spLock)return;
+  const q=spell.qs[spell.i];
+  const inp=document.getElementById('spIn');
+  const mine=inp.value.trim();
+  if(!mine)return;
+  const right=spNorm(mine)===spNorm(q.word)||(lang==='ja'&&q.reading&&spNorm(mine)===spNorm(q.reading));
+  spLock=true;
+  const fb=document.getElementById('spFb');
+  inp.disabled=true;
+  if(right){
+    inp.classList.add('good');
+    fb.className='spFb right';
+    fb.innerHTML='✓ <span class="ans">'+esc(q.word)+'</span>'+(q.reading?' <span style="font-size:12px">'+esc(q.reading)+'</span>':'');
+    spell.correct++;
+  }else{
+    inp.classList.add('bad');
+    fb.className='spFb wrong';
+    fb.innerHTML='是 <span class="ans">'+esc(q.word)+'</span>'+(q.reading?' <span style="font-size:12px;color:var(--muted)">'+esc(q.reading)+'</span>':'')
+      +'　<span class="mine">'+esc(mine)+'</span>';
+    spell.wrong.push(q.word);
+  }
+  fetch('/api/study/mark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:q.id,know:right})}).catch(()=>{});
+  setTimeout(()=>{spLock=false;spell.i++;nextSp()},right?900:2200);
+}
+async function endSpell(){
+  document.getElementById('spBody').innerHTML='';
+  document.getElementById('spProg').textContent='';
+  const sc=document.getElementById('spScore');
+  sc.textContent=spell.qs.length+' 个词默对了 '+spell.correct+' 个';
+  sc.classList.remove('hide');
+  document.getElementById('spEndCtrl').classList.remove('hide');
+  const row=document.getElementById('spSayRow'),say=document.getElementById('spSay');
+  row.classList.remove('hide');say.className='hb thinking';say.textContent='他在看你的默写本…';
+  try{
+    const r=await fetch('/api/study/quiz',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({lang,mode:'spell',total:spell.qs.length,correct:spell.correct,wrong:spell.wrong})});
+    const d=await r.json();
+    say.className='hb';say.textContent=d.say||'…';
+  }catch(e){say.className='hb';say.textContent='(他的话没送到…不过默写本你自己也看到啦)'}
 }
 
 // ── 陪练 ──
