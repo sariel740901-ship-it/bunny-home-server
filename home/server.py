@@ -42,6 +42,7 @@ DEFAULT_SERVICES = [
     {"name": "darkroom",    "title": "暗房",       "dir": "darkroom",    "cmd": ["server.py"],          "port": 8030},
     {"name": "presence",    "title": "时间的眼睛", "dir": "presence",    "cmd": ["server.py"],          "port": 8040},
     {"name": "music-dj",    "title": "DJ台",       "dir": "music-dj",    "cmd": ["server.py"],          "port": 3456},
+    {"name": "qitan",       "title": "棋摊",       "dir": "qitan",       "cmd": ["server.py"],          "port": 8080},
 ]
 
 
