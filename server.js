@@ -1182,6 +1182,18 @@ app.get('/api/study/review', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 生词本: 学过的全部词,按日期倒序(前端按天分组、可只看没记熟的)
+app.get('/api/study/all', async (req, res) => {
+  const lang = studyLang(req.query.lang);
+  try {
+    const { data, error } = await supabase.from('study_words')
+      .select('id,day,word,reading,meaning,example,example_zh,note,familiarity,seen')
+      .eq('lang', lang).order('day', { ascending: false }).order('id', { ascending: true }).limit(600);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, words: data || [] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 测验/拼写交卷: 分数给他看,话由他说
 app.post('/api/study/quiz', async (req, res) => {
   try {
