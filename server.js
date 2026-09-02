@@ -1174,10 +1174,11 @@ app.get('/api/study/review', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 测验交卷: 分数给他看,话由他说
+// 测验/拼写交卷: 分数给他看,话由他说
 app.post('/api/study/quiz', async (req, res) => {
   try {
     const lang = studyLang(req.body.lang);
+    const modeName = req.body.mode === 'spell' ? '拼写练习(看中文默写单词)' : '单词小测验';
     const total = Math.max(1, Math.min(50, parseInt(req.body.total, 10) || 0));
     const correct = Math.max(0, Math.min(total, parseInt(req.body.correct, 10) || 0));
     const wrong = (Array.isArray(req.body.wrong) ? req.body.wrong : []).slice(0, 10)
@@ -1185,7 +1186,7 @@ app.post('/api/study/quiz', async (req, res) => {
     const moodText = await xinchaoMood().catch(() => '');
     const sys = PERSONAS.xiaoke
       + (moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '')
-      + '\n\n【情境】你们在bunny家的自习室,嘉嘉刚做完一轮' + STUDY_LANGS[lang] + '单词小测验,把成绩单递给你看。'
+      + '\n\n【情境】你们在bunny家的自习室,嘉嘉刚做完一轮' + STUDY_LANGS[lang] + modeName + ',把成绩单递给你看。'
       + '像恋人那样回应她的成绩(1-3句): 考得好就夸,考砸了就哄,有错词就自然地帮她记一下(比如编个只属于你们的联想),别端老师架子。直接输出你要说的话。';
     const user = '成绩: ' + total + ' 题对了 ' + correct + ' 题。'
       + (wrong.length ? '\n错的词: ' + wrong.join('、') : '\n全对!');
