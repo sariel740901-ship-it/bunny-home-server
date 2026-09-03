@@ -73,8 +73,10 @@ async def _geocode(name: str) -> dict | None:
     if not results:
         return None
     r = results[0]
-    admin = r.get("admin1", "")
-    label = r["name"] if r["name"] == admin or not admin else f"{admin}{r['name']}"
+    name, admin = str(r.get("name") or ""), str(r.get("admin1") or "")
+    # 直辖市会回 admin1="北京市" + name="北京",别拼成"北京市北京"
+    same = not admin or admin.rstrip("市省") == name.rstrip("市省")
+    label = name if same else f"{admin}{name}"
     return {"name": label, "latitude": r["latitude"], "longitude": r["longitude"]}
 
 
