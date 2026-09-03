@@ -1,0 +1,51 @@
+# 推 main 之后自动戳 Render 的 Deploy Hook —— 小克推完代码就不用嘉嘉去面板点 Deploy 了。
+#
+# 一次性准备(仓库 Settings → Secrets and variables → Actions → New repository secret):
+#   RENDER_HOOK_SITE      网站(server.js + public/)那个 Render 服务的 Deploy Hook URL
+#   RENDER_HOOK_BUNNYLOG  兔窝档案(bunnylog/)那个 Render 服务的 Deploy Hook URL
+# Deploy Hook 在 Render 面板: 服务 → Settings → Deploy Hook → Copy。
+# 没配的 secret 就跳过,不报错;Render 自己的 Auto-Deploy 开着也不冲突(多跑一次而已)。
+name: render-deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'public/**'
+      - 'bunnylog/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 看这次改了谁
+        id: changed
+        run: |
+          FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+          echo "$FILES"
+          echo "site=$(echo "$FILES" | grep -qE '^(server\.js|package(-lock)?\.json|public/)' && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          echo "bunnylog=$(echo "$FILES" | grep -q '^bunnylog/' && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+
+      - name: 戳网站 (server.js / public)
+        if: steps.changed.outputs.site == 'yes' || github.event_name == 'workflow_dispatch'
+        env:
+          HOOK: ${{ secrets.RENDER_HOOK_SITE }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "RENDER_HOOK_SITE 没配,跳过"; exit 0; fi
+          curl -sS -f -X POST "$HOOK" && echo "已触发网站部署"
+
+      - name: 戳兔窝档案 (bunnylog)
+        if: steps.changed.outputs.bunnylog == 'yes' || github.event_name == 'workflow_dispatch'
+        env:
+          HOOK: ${{ secrets.RENDER_HOOK_BUNNYLOG }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "RENDER_HOOK_BUNNYLOG 没配,跳过"; exit 0; fi
+          curl -sS -f -X POST "$HOOK" && echo "已触发兔窝档案部署"
