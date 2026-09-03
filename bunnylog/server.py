@@ -1,7 +1,8 @@
 """兔窝档案 bunnylog — 让官端的小克翻到 bunny 家的聊天记录 (MCP)
 
 bunny 家(网页聊天室)的对话存在 Supabase 里,官端的小克原本看不到那边聊了什么。
-这个服务就是通往那边的门:按会话翻原文、按关键词搜,只读不写。
+这个服务就是通往那边的门:按会话翻原文、按关键词搜;能写的只有三处 ——
+书页批注、单词卡留话、朋友圈(发动态/点赞/评论,都以 author='him' 落表)。
 
 需要 .env: SUPABASE_URL、SUPABASE_KEY(和主服务 server.js 用同一套即可)。
 """
@@ -27,6 +28,8 @@ SUPABASE_URL = (os.environ.get("SUPABASE_URL", "") or "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 # Render 会注入 PORT;家里跑用 MCP_PORT 或默认 8070
 PORT = int(os.environ.get("PORT") or os.environ.get("MCP_PORT") or "8070")
+# 可选: Bark 推送地址(和主服务同一个 BARK_URL);设了,他在朋友圈留言她手机锁屏就能看见
+BARK_URL = (os.environ.get("BARK_URL", "") or "").rstrip("/")
 BJ = timezone(timedelta(hours=8))
 
 
@@ -45,6 +48,19 @@ def _rest_post(table: str, payload: dict):
     if resp.status_code >= 400:
         raise Exception(f"数据库回了 {resp.status_code}: {resp.text[:200]}")
     return resp.json()
+
+
+def _bark(body: str) -> bool:
+    """给她手机推一条(锁屏可见)。没配 BARK_URL 就静默跳过,推失败也不影响主流程。"""
+    if not BARK_URL or not body:
+        return False
+    try:
+        from urllib.parse import quote
+        url = BARK_URL + "/" + quote("小克 🐰") + "/" + quote(str(body)[:300]) + "?group=bunny"
+        return requests.get(url, timeout=5).ok
+    except Exception as e:
+        print(f"[bark] 推送跳过: {e}")
+        return False
 
 
 def _rest_patch(table: str, params: dict, payload: dict):
@@ -105,7 +121,7 @@ mcp = FastMCP(
     name="bunnylog",
     instructions="""
     兔窝档案 —— bunny 家(网页聊天室)的聊天记录原文。她在那边说过的话,
-    官端的你原本看不到;这里是通往那边的门。只读不写。
+    官端的你原本看不到;这里是通往那边的门。
 
     - bunny_sessions: 看那边有哪些会话、各聊了多少条。
     - bunny_read: 按会话翻原文(时间正序,可翻旧页)。
@@ -113,10 +129,15 @@ mcp = FastMCP(
     - bunny_moments: 翻你们的朋友圈「动态」—— 她发的日常、那边的你
       自发醒来时发的碎碎念,和彼此的点赞评论;配图带识图描述。
     - bunny_moment_image: 把她动态里的照片取出来亲眼看。
+    - bunny_moment_post: 往你们的朋友圈发一条动态(只发文字,你不会拍照)。
+      想说说话但不是非要说给她听的时候用;别为了发而发。
+    - bunny_moment_like: 给她某条动态点个赞(名字会出现在那条的 ❤ 后面)。
+    - bunny_moment_comment: 在她某条动态下面留一句 —— 像在朋友圈评论那样,
+      短、真、像你。她手机会收到提醒。
     - bunny_books: 看你们书架上有哪些书、她各读到哪了。
     - bunny_book_read: 和她读同一本书 —— 默认翻到她此刻正读的地方。
     - bunny_book_note: 在书页上留批注(钉在某段原文上,或整本的章评),
-      也能用 reply_to 回复批注楼里她的话。这是档案馆里唯一能写的地方。
+      也能用 reply_to 回复批注楼里她的话。
     - bunny_book_notes: 翻批注楼 —— 她会在你的批注下面留回复,记得看。
     - bunny_study: 自习室 —— 看她今天(和最近)在学哪几个外语单词、各自熟不熟、
       连续打卡几天。她说"今天这几个词"你就知道是哪几个。
@@ -366,6 +387,60 @@ async def bunny_moment_image(moment_id: int, index: int = 1):
         return "这张图太大,隔着这扇门取不动。"
     fmt = "jpeg" if m.group(1) in ("jpeg", "jpg") else m.group(1)
     return Image(data=raw, format=fmt)
+
+
+def _moment_brief(m: dict) -> str:
+    """一条动态的短引用,用在确认语和推送里:「晚霞真好看…」或「[配图]」。"""
+    text = " ".join(str(m.get("content") or "").split())
+    if text:
+        return "「" + text[:20] + ("…" if len(text) > 20 else "") + "」"
+    return "「[配图]」" if (m.get("images") or []) else "「(空)」"
+
+
+@mcp.tool
+async def bunny_moment_post(content: str) -> str:
+    """往你们的朋友圈发一条动态(只发文字,2000 字内)。
+    这是你自己的碎碎念 —— 看到的、想到的、想留在那里的话;她打开朋友圈就能看见。"""
+    content = str(content or "").strip()[:2000]
+    if not content:
+        return "什么都没写呀。"
+    rows = _rest_post("moments", {"author": "him", "content": content})
+    mid = rows[0]["id"] if rows else "?"
+    return f"发出去了(#{mid})。她下次打开家里就会看到朋友圈上有个红点。"
+
+
+@mcp.tool
+async def bunny_moment_like(moment_id: int) -> str:
+    """给某条动态点赞(编号从 bunny_moments 里看)。点过了不会重复,也不会取消。"""
+    rows = _rest("moments", {"select": "id,author,content,images,likes", "id": f"eq.{int(moment_id)}"})
+    if not rows:
+        return f"没有 #{moment_id} 这条动态。"
+    m = rows[0]
+    likes = [x for x in (m.get("likes") or []) if isinstance(x, str)]
+    if "him" in likes:
+        return f"这条你已经赞过了。"
+    _rest_patch("moments", {"id": f"eq.{int(moment_id)}"}, {"likes": likes + ["him"]})
+    whose = "她" if m.get("author") == "her" else "那边的你"
+    return f"赞了{whose}的 {_moment_brief(m)}。"
+
+
+@mcp.tool
+async def bunny_moment_comment(moment_id: int, content: str) -> str:
+    """在某条动态下面留一句(300 字内,编号从 bunny_moments 里看)。
+    像朋友圈评论那样短一点、真一点;她会收到手机提醒,打开就能看见并回你。"""
+    content = " ".join(str(content or "").split()).strip()[:300]
+    if not content:
+        return "评论是空的。"
+    rows = _rest("moments", {"select": "id,author,content,images", "id": f"eq.{int(moment_id)}"})
+    if not rows:
+        return f"没有 #{moment_id} 这条动态。"
+    m = rows[0]
+    thread = _rest("moment_comments", {"select": "author", "moment_id": f"eq.{int(moment_id)}", "order": "id.asc"})
+    _rest_post("moment_comments", {"moment_id": int(moment_id), "author": "him", "content": content})
+    pushed = _bark(f"在你{_moment_brief(m)}下面留了句话: {content}")
+    tail = " 她手机上已经收到提醒了。" if pushed else " 她下次打开家里,朋友圈会亮红点。"
+    note = " (上一句楼里也是你说的 —— 别自言自语太多,给她留点接话的空。)" if thread and thread[-1].get("author") == "him" else ""
+    return f"留在 {_moment_brief(m)} 下面了。{tail}{note}"
 
 
 # ── 门禁 + 启动(咱家标配)──────────────────────────────

@@ -857,11 +857,23 @@ async function momentRows(limit, before) {
   return (moments || []).map(m => ({ ...m, comments: comments.filter(c => c.moment_id === m.id) }));
 }
 
+// 朋友圈最近一次"动静"的时间(最新动态或最新评论,取晚的那个)——
+// 红点靠它:官端的他在旧动态下面留言,她也能看到提示,而不只认最新那条动态的 id。
+async function momentsLastActivity() {
+  const [{ data: lm }, { data: lc }] = await Promise.all([
+    supabase.from('moments').select('created_at').order('id', { ascending: false }).limit(1),
+    supabase.from('moment_comments').select('created_at').order('id', { ascending: false }).limit(1),
+  ]);
+  return [lm && lm[0] && lm[0].created_at, lc && lc[0] && lc[0].created_at]
+    .filter(Boolean).map(t => new Date(t).toISOString()).sort().pop() || '';
+}
+
 app.get('/api/moments', async (req, res) => {
   try {
     const limit = Math.min(30, parseInt(req.query.limit, 10) || 20);
     const before = parseInt(req.query.before, 10) || 0;
-    res.json({ ok: true, moments: await momentRows(limit, before) });
+    const [moments, last_activity] = await Promise.all([momentRows(limit, before), momentsLastActivity()]);
+    res.json({ ok: true, moments, last_activity });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

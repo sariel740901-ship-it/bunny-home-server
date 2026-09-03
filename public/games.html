@@ -1219,9 +1219,10 @@ function turn(d){
 
 // 动态红点
 fetch('/api/moments?limit=1').then(r=>r.json()).then(d=>{
-  const latest=(d&&d.moments&&d.moments[0]&&d.moments[0].id)||0;
-  const seen=parseInt(localStorage.getItem('bunny_moments_seen')||'0',10);
-  if(latest>seen)document.getElementById('mdot').classList.add('show');
+  // 认"最近一次动静"(新动态或新评论),不只认最新动态的 id —— 他在旧动态下留言也会亮
+  const latest=(d&&d.last_activity)||'';
+  const seen=localStorage.getItem('bunny_moments_seen_at')||'';
+  if(latest&&latest>seen)document.getElementById('mdot').classList.add('show');
 }).catch(()=>{});
 </script>
 </body>

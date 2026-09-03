@@ -232,9 +232,11 @@ async function load(initial){
   if(list.length)oldest=list[list.length-1].id;
   document.getElementById('moreBtn').classList.toggle('hide',list.length<20);
   render();
-  if(initial&&moments.length)localStorage.setItem('bunny_moments_seen',String(moments[0].id));
+  if(initial&&d.last_activity)localStorage.setItem('bunny_moments_seen_at',d.last_activity);
 }
 function loadMore(){load(false)}
+// 她自己刚发的动态/评论,把"看过"的水位线推到那一刻,别让自己的动静点亮红点
+function seenAt(ts){if(ts)localStorage.setItem('bunny_moments_seen_at',new Date(ts).toISOString())}
 function render(){
   const feed=document.getElementById('feed');
   if(!moments.length){feed.innerHTML='<div class="emptyf">还没有动态,点右上角的相机发第一条</div>';return}
@@ -305,7 +307,7 @@ function item(m){
     const content=(inp.dataset.prefix||'')+v;
     inp.value='';row.classList.add('hide');
     const r=await fetch('/api/moments/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:m.id,content})});
-    if(r.ok){const d=await r.json();m.comments=(m.comments||[]).concat([d.comment]);render()}
+    if(r.ok){const d=await r.json();m.comments=(m.comments||[]).concat([d.comment]);render();seenAt(d.comment&&d.comment.created_at)}
   };
   row.querySelector('[data-send]').onclick=doSend;
   inp.onkeydown=e=>{if(e.key==='Enter')doSend()};
@@ -357,7 +359,7 @@ async function post(){
     const d=await r.json();
     moments.unshift(d.moment);
     t.value='';pendImgs=[];renderPend();closeSheet();render();
-    localStorage.setItem('bunny_moments_seen',String(d.moment.id));
+    seenAt(d.moment&&d.moment.created_at);
   }
 }
 
