@@ -735,7 +735,8 @@ async function gameLLM(sys, user, maxTokens, temp) {
   return String(d.choices?.[0]?.message?.content || '').trim();
 }
 const XQ = require('./public/xiangqi-core.js'); // 象棋规则引擎(和前端共用同一份)
-const GAME_NAMES = { ttt: '井字棋', ultimate: '终极井字棋(大格)', gomoku: '五子棋', xiangqi: '象棋' };
+const GO = require('./public/go-core.js');      // 围棋规则引擎(同上)
+const GAME_NAMES = { ttt: '井字棋', ultimate: '终极井字棋(大格)', gomoku: '五子棋', xiangqi: '象棋', go: '围棋' };
 app.post('/api/game', async (req, res) => {
   const { game } = req.body || {};
   try {
@@ -811,6 +812,15 @@ app.post('/api/game', async (req, res) => {
       if (!top.length) return res.json({ move: null, say: '(他被将死了,一步都走不了)' });
       cands = top.map((c, k) => ({ n: k + 1, move: [c.from, c.to], why: c.name + ' — ' + c.why }));
       boardDesc = '象棋局面,你执' + (side === 'r' ? '红(大写)' : '黑(小写)') + ':\n' + XQ.boardText(b);
+    } else if (game === 'go' && GO.SIZES.includes(Number(req.body.n)) && Array.isArray(req.body.board) && req.body.board.length === Number(req.body.n) ** 2) {
+      const n = Number(req.body.n), side = req.body.side === 'X' ? 'X' : 'O';
+      const b = req.body.board.map(v => v === 'X' || v === 'O' ? v : '');
+      const ko = Number.isInteger(req.body.ko) ? req.body.ko : -1;
+      const passes = Number(req.body.passes) || 0;
+      const top = GO.bestMoves(b, n, side, ko, 4);
+      if (passes > 0 && !top.some(c => c.i < 0) && top[0].score < 4) top.push({ i: -1, score: 0, why: '她刚停了一手,局面也差不多了,你也停一手就终局数子' });
+      cands = top.map((c, k) => ({ n: k + 1, move: c.i, why: (c.i < 0 ? '停一手' : GO.coord(n, c.i)) + ' — ' + c.why }));
+      boardDesc = '围棋 ' + n + ' 路,你执' + (side === 'X' ? '黑(X)' : '白(O)') + (passes ? ',她刚停了一手' : '') + ':\n' + GO.boardText(b, n);
     } else {
       return res.status(400).json({ error: 'bad game payload' });
     }

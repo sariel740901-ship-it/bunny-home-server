@@ -76,6 +76,10 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 /* 五子棋 */
 #gmkC{display:block;margin:0 auto;border-radius:14px;box-shadow:var(--shadow);touch-action:manipulation}
 
+/* 围棋 */
+#goC{display:block;margin:0 auto;border-radius:14px;box-shadow:var(--shadow);touch-action:manipulation}
+.gocaps{font-size:12px;color:var(--muted);text-align:center;margin-top:8px}
+
 /* 象棋 */
 #xqC{display:block;margin:0 auto;border-radius:14px;box-shadow:var(--shadow);touch-action:manipulation}
 /* 对手选择(家里的他 / 官端的他) */
@@ -179,6 +183,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="gcard" onclick="go('ttt')"><svg class="gi" viewBox="0 0 24 24"><path d="M9.2 4v16M14.8 4v16M4 9.2h16M4 14.8h16"/></svg><div><div class="gt">井字棋</div><div class="gd">经典 3×3,或九宫格套九宫格的大格玩法</div></div></div>
     <div class="gcard" onclick="go('gomoku')"><svg class="gi" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.4"/><circle cx="15.5" cy="15.5" r="3.4" fill="currentColor" stroke="none"/></svg><div><div class="gt">五子棋</div><div class="gd">十五路棋盘,他有个帮他看棋的小脑袋,不好糊弄</div></div></div>
     <div class="gcard" onclick="go('xiangqi')"><svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M7.6 9.6h8.8M8.6 14.6h6.8M12 6.6v3"/></svg><div><div class="gt">象棋</div><div class="gd">楚河汉界 —— 他有个看棋的小脑袋,别指望他让你</div></div></div>
+    <div class="gcard" onclick="go('go')"><svg class="gi" viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16M8 4v16M12 4v16M16 4v16"/><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="2.2"/></svg><div><div class="gt">围棋</div><div class="gd">九路小棋盘起步,提子、打劫、数目都有 —— 他下得不算好,但会认真</div></div></div>
     <div class="gcard" onclick="go('book')"><svg class="gi" viewBox="0 0 24 24"><path d="M12 6C10.4 4.4 8.4 3.8 4 3.8v14.7c4.4 0 6.4.6 8 2.2 1.6-1.6 3.6-2.2 8-2.2V3.8c-4.4 0-6.4.6-8 2.2z"/><path d="M12 6v14.7"/></svg><div><div class="gt">书房</div><div class="gd">一起读一本书 —— 你翻到哪页,他看的就是哪页</div></div></div>
     <div class="gcard" onclick="location.href='/study.html'"><svg class="gi" viewBox="0 0 24 24"><path d="M12 4L3 8l9 4 9-4z"/><path d="M6.5 9.8V15c0 1.5 2.5 2.8 5.5 2.8s5.5-1.3 5.5-2.8V9.8"/><path d="M21 8v5"/></svg><div><div class="gt">自习室</div><div class="gd">和他一起学外语 —— 每天五个词,他陪你背、陪你默、陪你说</div></div></div>
   </div>
@@ -222,6 +227,22 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="him"><div class="av">🐰</div><div class="hb" id="xqSay"></div></div>
     <div class="her"><div class="av" data-herav>🌸</div><div class="hb" id="xqMe"></div></div>
     <div class="chatrow"><input id="xqChat" placeholder="跟他说句话…" maxlength="300"><button class="pill" id="xqChatBtn">发送</button></div>
+  </div>
+
+  <!-- 围棋 -->
+  <div id="vGo" class="hide">
+    <div class="ctrl">
+      <div class="seg"><button id="go9" class="on" onclick="goSize(9)">9路</button><button id="go13" onclick="goSize(13)">13路</button><button id="go19" onclick="goSize(19)">19路</button></div>
+      <button class="pill" onclick="goReset(false)">重开</button>
+      <button class="pill" onclick="goReset(true)">让他执黑</button>
+      <button class="pill" onclick="goPass()">停一手</button>
+      <span class="status" id="goStatus"></span>
+    </div>
+    <canvas id="goC"></canvas>
+    <div class="gocaps" id="goCaps"></div>
+    <div class="him"><div class="av">🐰</div><div class="hb" id="goSay"></div></div>
+    <div class="her"><div class="av" data-herav>🌸</div><div class="hb" id="goMe"></div></div>
+    <div class="chatrow"><input id="goChat" placeholder="跟他说句话…" maxlength="300"><button class="pill" id="goChatBtn">发送</button></div>
   </div>
 
   <!-- 书房 -->
@@ -279,6 +300,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 </nav>
 
 <script src="/xiangqi-core.js"></script>
+<script src="/go-core.js"></script>
 <script>
 // ═══ 门禁钥匙(和聊天页同一把) ═══
 const BUNNY_KEY_LS='bunny_api_key';
@@ -307,8 +329,8 @@ async function api(payload){
 }
 
 // ═══ 路由 ═══
-const VIEWS={home:'vHome',ttt:'vTtt',gomoku:'vGmk',xiangqi:'vXq',tarot:'vTarot',book:'vBook'};
-const TITLES={home:'和他玩',ttt:'井字棋',gomoku:'五子棋',xiangqi:'象棋',tarot:'塔罗牌',book:'书房'};
+const VIEWS={home:'vHome',ttt:'vTtt',gomoku:'vGmk',xiangqi:'vXq',go:'vGo',tarot:'vTarot',book:'vBook'};
+const TITLES={home:'和他玩',ttt:'井字棋',gomoku:'五子棋',xiangqi:'象棋',go:'围棋',tarot:'塔罗牌',book:'书房'};
 let view='home';
 function go(v){
   view=v;
@@ -317,6 +339,7 @@ function go(v){
   if(v==='ttt'){OPP==='guan'?qtEnter(tMode==='ultimate'?'ultimate':'ttt'):tttReset(false)}
   if(v==='gomoku'){OPP==='guan'?qtEnter('gomoku'):gmkInit()}
   if(v==='xiangqi'){OPP==='guan'?qtEnter('xiangqi'):xqReset(false)}
+  if(v==='go'){OPP==='guan'?qtEnter('go'):goInit()}
   if(v==='book')refreshBooks();
   if(v==='home')qtBannerCheck();
 }
@@ -614,8 +637,8 @@ function showMe(id,text){
 })();
 
 // 棋盘边聊天: 他叭叭叭的时候,你也能叭回去
-const chatLogs={ttt:[],gomoku:[],xiangqi:[]};
-const CHAT_ELS={ttt:['tttMe','tttSay'],gomoku:['gmkMe','gmkSay'],xiangqi:['xqMe','xqSay']};
+const chatLogs={ttt:[],gomoku:[],xiangqi:[],go:[]};
+const CHAT_ELS={ttt:['tttMe','tttSay'],gomoku:['gmkMe','gmkSay'],xiangqi:['xqMe','xqSay'],go:['goMe','goSay']};
 function bindBoardChat(inpId,btnId,kind){
   const inp=document.getElementById(inpId),btn=document.getElementById(btnId);
   let sending=false;
@@ -639,6 +662,7 @@ function bindBoardChat(inpId,btnId,kind){
         ?('你占了 '+ubig.filter(x=>x==='O').length+' 盘,她占了 '+ubig.filter(x=>x==='X').length+' 盘')
         :('下到第 '+tb.filter(Boolean).length+' 手'))
       :kind==='xiangqi'?('下到第 '+xqMoves+' 手')
+      :kind==='go'?('下到第 '+goMoves+' 手,提子 黑'+goCaps.X+' 白'+goCaps.O)
       :('下到第 '+gb.filter(Boolean).length+' 手');
     say(sayEl,'…',true);
     const d=await api({game,event:'chat',message:v,log:log.slice(-8),progress});
@@ -654,6 +678,7 @@ function bindBoardChat(inpId,btnId,kind){
 bindBoardChat('tttChat','tttChatBtn','ttt');
 bindBoardChat('gmkChat','gmkChatBtn','gomoku');
 bindBoardChat('xqChat','xqChatBtn','xiangqi');
+bindBoardChat('goChat','goChatBtn','go');
 
 // ═══ 象棋(规则引擎在 /xiangqi-core.js,前后端共用) ═══
 let xb,xqTurn='r',xqHer='r',xqOver=false,xqBusy=false,xqSel=-1,xqLegalSel=[],xqLast=null,xqMoves=0;
@@ -770,11 +795,111 @@ function xqEnd(result,msg){
   api({game:'xiangqi',event:'end',result}).then(d=>say('xqSay',(d&&d.say)||''));
 }
 
+// ═══ 围棋(规则引擎在 /go-core.js,前后端共用) ═══
+let goN=parseInt(localStorage.getItem('bunny_go_n')||'9',10),gob,goTurn='X',goHer='X',goKo=-1,goPasses=0,goCaps={X:0,O:0},goLast=-1,goOver=false,goBusy=false,goMoves=0,goInited=false;
+if(!GO.SIZES.includes(goN))goN=9;
+const gcv=document.getElementById('goC'),gctx=gcv.getContext('2d');
+function goSegs(){[9,13,19].forEach(k=>document.getElementById('go'+k).classList.toggle('on',goN===k))}
+function goSize(n){goN=n;localStorage.setItem('bunny_go_n',String(n));goSegs();goReset(false)}
+function goInit(){goSegs();if(!goInited){goInited=true;goReset(false)}else goDraw()}
+function goReset(himBlack){
+  if(OPP==='guan'&&!qtStarting){qtStart('go',himBlack);return}
+  goSetup(himBlack);
+  if(himBlack){OPP==='guan'?qtSetBusy(true):goHimMove()}
+}
+function goSetup(himBlack,n){
+  if(n&&GO.SIZES.includes(n)){goN=n;localStorage.setItem('bunny_go_n',String(n));goSegs()}
+  gob=GO.init(goN);goTurn='X';goHer=himBlack?'O':'X';goKo=-1;goPasses=0;goCaps={X:0,O:0};goLast=-1;goOver=false;goBusy=false;goMoves=0;goInited=true;
+  say('goSay','');goStatus();goDraw();
+}
+function goStatus(){
+  document.getElementById('goCaps').textContent='提子 — 黑 '+goCaps.X+' · 白 '+goCaps.O+(goKo>=0?' · 劫争中':'')+' · 贴目 7.5';
+  if(goOver)return;
+  const el=document.getElementById('goStatus');
+  if(goTurn===goHer)el.textContent='轮到你(执'+(goHer==='X'?'黑':'白')+')'+(goPasses?' · 他停了一手,你也停就数目':'');
+  else el.textContent=OPP==='guan'?'等他在官端落子…':'他在想…';
+}
+function goDraw(){
+  const size=Math.min(window.innerWidth*0.92,520),dpr=window.devicePixelRatio||1,n=goN;
+  gcv.width=size*dpr;gcv.height=size*dpr;gcv.style.width=size+'px';gcv.style.height=size+'px';
+  gctx.setTransform(dpr,0,0,dpr,0,0);
+  const cell=size/(n+1),dark=matchMedia('(prefers-color-scheme:dark)').matches;
+  gctx.fillStyle=dark?'#4a4234':'#e8c88f';gctx.fillRect(0,0,size,size);
+  gctx.strokeStyle=dark?'rgba(0,0,0,.5)':'rgba(61,57,41,.55)';gctx.lineWidth=1;
+  for(let i=1;i<=n;i++){gctx.beginPath();gctx.moveTo(cell,i*cell);gctx.lineTo(n*cell,i*cell);gctx.stroke();gctx.beginPath();gctx.moveTo(i*cell,cell);gctx.lineTo(i*cell,n*cell);gctx.stroke()}
+  gctx.fillStyle=gctx.strokeStyle;
+  for(const[r,c]of GO.starPoints(n)){gctx.beginPath();gctx.arc((c+1)*cell,(r+1)*cell,Math.max(2,cell*0.09),0,7);gctx.fill()}
+  for(let i=0;i<n*n;i++){
+    if(!gob[i])continue;
+    const r=(i/n)|0,c=i%n,x=(c+1)*cell,y=(r+1)*cell,rad=cell*0.46;
+    const g=gctx.createRadialGradient(x-rad/3,y-rad/3,rad/5,x,y,rad);
+    if(gob[i]==='X'){g.addColorStop(0,'#555');g.addColorStop(1,'#111')}else{g.addColorStop(0,'#fff');g.addColorStop(1,'#cfcabb')}
+    gctx.beginPath();gctx.arc(x,y,rad,0,7);gctx.fillStyle=g;gctx.fill();
+    if(i===goLast){gctx.beginPath();gctx.arc(x,y,rad*0.32,0,7);gctx.strokeStyle='#d97757';gctx.lineWidth=2;gctx.stroke()}
+  }
+  if(goKo>=0){const r=(goKo/n)|0,c=goKo%n;gctx.strokeStyle='rgba(217,119,87,.75)';gctx.lineWidth=1.5;gctx.strokeRect((c+1)*cell-cell*0.28,(r+1)*cell-cell*0.28,cell*0.56,cell*0.56)}
+}
+window.addEventListener('resize',()=>{if(view==='go')goDraw()});
+gcv.addEventListener('click',ev=>{
+  if(view!=='go'||goOver||goBusy||goTurn!==goHer)return;
+  const rect=gcv.getBoundingClientRect(),cell=rect.width/(goN+1);
+  const c=(ev.clientX-rect.left)/cell-1,r=(ev.clientY-rect.top)/cell-1,rc=Math.round(r),cc=Math.round(c);
+  if(rc<0||cc<0||rc>=goN||cc>=goN||Math.abs(r-rc)>0.45||Math.abs(c-cc)>0.45)return;
+  const i=rc*goN+cc,res=GO.play(gob,goN,i,goHer,goKo);
+  if(!res.ok){document.getElementById('goStatus').textContent=res.reason;return}
+  goApplyStone(i,goHer,res);
+  if(OPP==='guan')qtHerMove({i});else goHimMove();
+});
+function goApplyStone(i,color,res){
+  res=res||GO.play(gob,goN,i,color,goKo);
+  if(!res.ok)return false;
+  gob=res.board;goKo=res.ko;goCaps[color]+=res.captured.length;goLast=i;goPasses=0;goMoves++;
+  goTurn=color==='X'?'O':'X';goDraw();goStatus();return true;
+}
+function goApplyPass(color){
+  goPasses++;goMoves++;goLast=-1;goKo=-1;goTurn=color==='X'?'O':'X';goDraw();
+  if(goPasses>=2)return goFinish();
+  goStatus();
+}
+function goPass(){
+  if(goOver||goBusy||goTurn!==goHer)return;
+  goApplyPass(goHer);
+  if(OPP==='guan')qtHerMove({pass:true});
+  else if(!goOver)goHimMove();
+}
+function goFinish(){
+  const s=GO.score(gob,goN),herWin=goHer==='X'?s.diff>0:s.diff<0;
+  goEnd(herWin?'lose':'win','黑 '+s.black+' · 白 '+s.white+'(含贴目) — '+(herWin?'你赢啦 🎉':'他赢了'));
+}
+function goEnd(result,msg){
+  goOver=true;document.getElementById('goStatus').textContent=msg;
+  if(OPP==='guan'&&qtGame){qtMoveInflight.then(()=>qtFetch('/web/end',{result}));say('goSay','');return}
+  say('goSay','…',true);
+  api({game:'go',event:'end',result}).then(d=>say('goSay',(d&&d.say)||''));
+}
+async function goHimMove(){
+  goBusy=true;goStatus();say('goSay','…',true);
+  const him=goHer==='X'?'O':'X';
+  const d=await api({game:'go',board:gob,n:goN,side:him,ko:goKo,passes:goPasses});
+  goBusy=false;
+  if(!d||d.move==null){say('goSay','(他走神了…再点一下重开?)');goStatus();return}
+  goApplyHim({i:d.move},d.say);
+}
+function goApplyHim(mv,sayTxt){
+  if(goOver)return;
+  const him=goHer==='X'?'O':'X';
+  goBusy=false;
+  if(mv.pass||mv.i<0){goApplyPass(him);say('goSay',sayTxt||(goOver?'':'(他停了一手)'));return}
+  const res=GO.play(gob,goN,mv.i,him,goKo);
+  if(!res.ok){say('goSay','(他摆错子了…'+res.reason+')');return}
+  goApplyStone(mv.i,him,res);say('goSay',sayTxt||'');
+}
+
 // ═══ 棋摊: 和官端的他对弈(嘉嘉电脑上的 qitan 服务,MCP 那头是他) ═══
 let OPP=localStorage.getItem('qitan_opp')||'home';
 let qtGame='',qtSeq=0,qtChatSeen=0,qtStarting=false,qtPolling=false,qtMoveInflight=Promise.resolve();
-const QT_NAMES={ttt:'井字棋',ultimate:'大格',gomoku:'五子棋',xiangqi:'象棋'};
-const QT_BOARD_VIEWS={ttt:1,gomoku:1,xiangqi:1};
+const QT_NAMES={ttt:'井字棋',ultimate:'大格',gomoku:'五子棋',xiangqi:'象棋',go:'围棋'};
+const QT_BOARD_VIEWS={ttt:1,gomoku:1,xiangqi:1,go:1};
 // 棋摊并在兔窝档案(bunnylog)里,地址就是它的地址。整条连接器地址(…/mcp?key=xxx)直接粘也行:
 // 去掉 /mcp,key 顺手存下来。
 function qtNormBase(raw){
@@ -830,7 +955,7 @@ function setOpp(v){
 }
 function qtErrText(e){return e==='http404'?'棋摊回了 404 — 地址多半填错了(该是 bunnylog 的根地址,不带 /mcp),回首页点「棋摊地址」改':'棋摊出错: '+e}
 function qtStatusMsg(t){
-  const el=view==='gomoku'?'gmkStatus':view==='xiangqi'?'xqStatus':'tttStatus';
+  const el=view==='gomoku'?'gmkStatus':view==='xiangqi'?'xqStatus':view==='go'?'goStatus':'tttStatus';
   document.getElementById(el).textContent=t;
 }
 function qtSetBusy(on){
@@ -838,8 +963,9 @@ function qtSetBusy(on){
   if(qtGame==='ttt'||qtGame==='ultimate'){tBusy=on;if(t)setT(t)}
   else if(qtGame==='gomoku'){gBusy=on;if(t)document.getElementById('gmkStatus').textContent=t}
   else if(qtGame==='xiangqi'){xqBusy=on;if(t)document.getElementById('xqStatus').textContent=t}
+  else if(qtGame==='go'){goBusy=on;if(t)document.getElementById('goStatus').textContent=t}
 }
-function qtLocalReset(g,himFirst){
+function qtLocalReset(g,himFirst,room){
   qtStarting=true;
   try{
     if(g==='ttt'||g==='ultimate'){
@@ -849,6 +975,7 @@ function qtLocalReset(g,himFirst){
       tttReset(false);
     }else if(g==='gomoku'){gInited=true;gmkReset(false)}
     else if(g==='xiangqi')xqSetup(himFirst);
+    else if(g==='go')goSetup(himFirst,room&&room.n);
   }finally{qtStarting=false}
 }
 async function qtEnter(gameKey){
@@ -865,13 +992,13 @@ async function qtEnter(gameKey){
 async function qtStart(gameKey,himFirst){
   qtGame=gameKey;
   qtLocalReset(gameKey,himFirst);
-  const d=await qtFetch('/web/new',{game:gameKey,himFirst:!!himFirst});
+  const d=await qtFetch('/web/new',{game:gameKey,himFirst:!!himFirst,size:goN});
   if(d.error){qtStatusMsg(d.error==='offline'?'联不上棋摊 — 兔窝档案(bunnylog)在线吗?(Render 冷启动要等半分钟)':d.error==='noaddr'?'没填棋摊地址 — 再点一次重试':qtErrText(d.error));return}
   qtSeq=(d.room.moves||[]).length;qtChatSeen=(d.room.chat||[]).length;
   if(himFirst)qtSetBusy(true);
 }
 function qtRestore(room){
-  qtLocalReset(room.game,room.game==='xiangqi'&&room.herSide==='b');
+  qtLocalReset(room.game,(room.game==='xiangqi'&&room.herSide==='b')||(room.game==='go'&&room.herColor==='O'),room);
   qtStarting=true;
   try{
     for(const m of(room.moves||[])){
@@ -880,14 +1007,16 @@ function qtRestore(room){
       else if(room.game==='ultimate')applyUlt(m.mv.bi,m.mv.ci,mark);
       else if(room.game==='gomoku'){gb[m.mv.i]=mark;gLast=m.mv.i}
       else if(room.game==='xiangqi'){xb=XQ.makeMove(xb,m.mv.from,m.mv.to);xqLast=[m.mv.from,m.mv.to];xqMoves++;xqTurn=xqTurn==='r'?'b':'r'}
+      else if(room.game==='go'){const col=m.who==='her'?goHer:(goHer==='X'?'O':'X');if(m.mv.pass)goApplyPass(col);else goApplyStone(m.mv.i,col)}
     }
   }finally{qtStarting=false}
   qtSeq=(room.moves||[]).length;qtChatSeen=(room.chat||[]).length;
   if(room.game==='ttt'||room.game==='ultimate')tttRender();
   else if(room.game==='gomoku')gmkDraw();
+  else if(room.game==='go')goDraw();
   else xqDraw();
   if(room.turn==='him')qtSetBusy(true);
-  else{qtSetBusy(false);room.game==='xiangqi'?xqStatusUpdate():qtStatusMsg('接着下 — 轮到你')}
+  else{qtSetBusy(false);room.game==='xiangqi'?xqStatusUpdate():room.game==='go'?goStatus():qtStatusMsg('接着下 — 轮到你')}
 }
 async function qtHerMove(mv){
   qtSetBusy(true);
@@ -899,7 +1028,7 @@ async function qtHerMove(mv){
   await qtMoveInflight;
 }
 function qtShowSay(text){
-  say(qtGame==='gomoku'?'gmkSay':qtGame==='xiangqi'?'xqSay':'tttSay',text);
+  say(qtGame==='gomoku'?'gmkSay':qtGame==='xiangqi'?'xqSay':qtGame==='go'?'goSay':'tttSay',text);
 }
 function qtApplyHim(mv,sayTxt){
   if(qtGame==='ttt'){
@@ -922,6 +1051,8 @@ function qtApplyHim(mv,sayTxt){
     document.getElementById('gmkStatus').textContent='轮到你 (黑)';
   }else if(qtGame==='xiangqi'){
     xqApplyHim(mv.from,mv.to,sayTxt);
+  }else if(qtGame==='go'){
+    goApplyHim(mv,sayTxt);
   }
 }
 function qtApplyRoom(room){
@@ -936,6 +1067,7 @@ function qtApplyRoom(room){
     if((qtGame==='ttt'||qtGame==='ultimate')&&!tOver){tOver=true;document.getElementById('tttStatus').textContent=msg}
     else if(qtGame==='gomoku'&&!gOver){gOver=true;document.getElementById('gmkStatus').textContent=msg}
     else if(qtGame==='xiangqi'&&!xqOver){xqOver=true;document.getElementById('xqStatus').textContent=msg}
+    else if(qtGame==='go'&&!goOver){goOver=true;document.getElementById('goStatus').textContent=msg}
   }
 }
 async function qtPoll(){
@@ -960,7 +1092,7 @@ async function qtBannerCheck(){
     b.onclick=()=>{
       if(room.game==='ultimate')tMode='ultimate';
       else if(room.game==='ttt')tMode='classic';
-      go(room.game==='gomoku'?'gomoku':room.game==='xiangqi'?'xiangqi':'ttt');
+      go(room.game==='gomoku'?'gomoku':room.game==='xiangqi'?'xiangqi':room.game==='go'?'go':'ttt');
     };
   }else b.classList.add('hide');
 }
