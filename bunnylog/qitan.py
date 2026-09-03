@@ -27,7 +27,7 @@ DATA = BASE_DIR / "qitan.json"
 SUPABASE_URL = (os.environ.get("SUPABASE_URL", "") or "").rstrip("/")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 
-GAME_NAMES = {"ttt": "井字棋", "ultimate": "终极井字棋(大格)", "gomoku": "五子棋", "xiangqi": "象棋"}
+GAME_NAMES = {"ttt": "井字棋", "ultimate": "终极井字棋(大格)", "gomoku": "五子棋", "xiangqi": "象棋", "go": "围棋"}
 
 
 # ══════════════ 象棋规则(和 public/xiangqi-core.js 同一套,Python 版) ══════════════
@@ -232,6 +232,109 @@ def xq_board_text(b):
     return "\n".join(lines)
 
 
+# ══════════════ 围棋(和 public/go-core.js 同一套) ══════════════
+# 棋盘 n*n 的 list, idx = row*n+col, row0 在上。黑 'X', 白 'O'。数子法,贴 7.5。
+
+GO_LET = "ABCDEFGHJKLMNOPQRST"  # 标准记法跳过 I
+GO_SIZES = (9, 13, 19)
+GO_KOMI = 7.5
+
+
+def go_nbrs(n, i):
+    r, c = divmod(i, n)
+    out = []
+    if r > 0: out.append(i - n)
+    if r < n - 1: out.append(i + n)
+    if c > 0: out.append(i - 1)
+    if c < n - 1: out.append(i + 1)
+    return out
+
+
+def go_group(b, n, i):
+    color = b[i]
+    stack, seen, libs = [i], {i}, set()
+    while stack:
+        x = stack.pop()
+        for y in go_nbrs(n, x):
+            if b[y] == "":
+                libs.add(y)
+            elif b[y] == color and y not in seen:
+                seen.add(y)
+                stack.append(y)
+    return seen, libs
+
+
+def go_play(b, n, i, color, ko):
+    """返回 (ok, 新棋盘, 提掉的子, 新劫点, 原因)"""
+    if not 0 <= i < n * n or b[i] != "":
+        return False, None, [], -1, "那里已经有子了"
+    if i == ko:
+        return False, None, [], -1, "打劫 —— 这手不能马上提回去,先找个劫材"
+    nb = list(b)
+    nb[i] = color
+    opp = "O" if color == "X" else "X"
+    captured = []
+    for y in go_nbrs(n, i):
+        if nb[y] == opp:
+            stones, libs = go_group(nb, n, y)
+            if not libs:
+                for s_ in stones:
+                    nb[s_] = ""
+                    captured.append(s_)
+    own, libs = go_group(nb, n, i)
+    if not libs:
+        return False, None, [], -1, "自杀手,不能下"
+    new_ko = captured[0] if (len(captured) == 1 and len(own) == 1 and len(libs) == 1) else -1
+    return True, nb, captured, new_ko, ""
+
+
+def go_score(b, n):
+    """数子法: 子 + 只挨一方的空。返回 (黑, 白含贴目)。"""
+    blk = wht = 0
+    seen = set()
+    for i in range(n * n):
+        if b[i] == "X":
+            blk += 1
+        elif b[i] == "O":
+            wht += 1
+        elif i not in seen:
+            stack, region = [i], [i]
+            seen.add(i)
+            tb = tw = False
+            while stack:
+                x = stack.pop()
+                for y in go_nbrs(n, x):
+                    if b[y] == "":
+                        if y not in seen:
+                            seen.add(y); stack.append(y); region.append(y)
+                    elif b[y] == "X":
+                        tb = True
+                    else:
+                        tw = True
+            if tb and not tw: blk += len(region)
+            elif tw and not tb: wht += len(region)
+    return blk, wht + GO_KOMI
+
+
+def go_coord(n, i):
+    return GO_LET[i % n] + str(n - i // n)
+
+
+def go_parse(n, s):
+    s = (s or "").strip().upper()
+    if len(s) < 2 or s[0] not in GO_LET or not s[1:].isdigit():
+        return -1
+    c, r = GO_LET.index(s[0]), n - int(s[1:])
+    return -1 if (c >= n or not 0 <= r < n) else r * n + c
+
+
+def go_board_text(b, n):
+    lines = ["   " + " ".join(GO_LET[:n])]
+    for r in range(n):
+        lines.append(f"{n - r:2d} " + " ".join(b[r * n + c] or "." for c in range(n)))
+    return "\n".join(lines)
+
+
 # ══════════════ 其他三个小游戏 ══════════════
 
 TTT_LINES = ((0, 1, 2), (3, 4, 5), (6, 7, 8), (0, 3, 6), (1, 4, 7), (2, 5, 8), (0, 4, 8), (2, 4, 6))
@@ -304,7 +407,7 @@ def _now():
     return int(time.time())
 
 
-def new_room(game, him_first):
+def new_room(game, him_first, size=9):
     room = {"game": game, "status": "playing", "result": None,
             "turn": "him" if him_first else "her", "himFirst": bool(him_first),
             "moves": [], "chat": [], "himSeen": 0, "created": _now(), "updated": _now()}
@@ -319,7 +422,20 @@ def new_room(game, him_first):
     elif game == "xiangqi":
         room["board"] = xq_init()
         room["herSide"] = "b" if him_first else "r"  # 先手执红
+    elif game == "go":
+        n = size if size in GO_SIZES else 9
+        room["n"] = n
+        room["board"] = [""] * (n * n)
+        room["ko"] = -1
+        room["passes"] = 0
+        room["caps"] = {"her": 0, "him": 0}
+        room["herColor"] = "O" if him_first else "X"  # 先手执黑
     return room
+
+
+def _go_color(room, who):
+    her = room.get("herColor", "X")
+    return her if who == "her" else ("O" if her == "X" else "X")
 
 
 def _xq_turn_side(room):
@@ -414,6 +530,34 @@ def apply_move(room, who, mv, say=""):
             note = ("绝杀" if xq_in_check(b, nxt) else "困毙") + " — " + ("这局你赢了" if who == "him" else "这局她赢了")
         elif xq_in_check(b, nxt):
             note = "将军!"
+    elif game == "go":
+        n = room["n"]
+        color = _go_color(room, who)
+        if mv.get("pass"):
+            mv = {"pass": True}
+            room["passes"] = room.get("passes", 0) + 1
+            room["ko"] = -1
+            if room["passes"] >= 2:
+                blk, wht = go_score(room["board"], n)
+                her_wins = (blk > wht) == (room.get("herColor", "X") == "X")
+                _end(room, "lose" if her_wins else "win")
+                note = (f"两边都停手,数子: 黑 {blk} · 白 {wht}(含贴目 {GO_KOMI}) — "
+                        + ("这局她赢了" if her_wins else "这局你赢了"))
+            else:
+                note = "停了一手"
+        else:
+            i = mv.get("i")
+            if not isinstance(i, int) or not 0 <= i < n * n:
+                return False, "坐标不在棋盘上"
+            ok, nb, caps, nko, reason = go_play(room["board"], n, i, color, room.get("ko", -1))
+            if not ok:
+                return False, reason
+            room["board"] = nb
+            room["ko"] = nko
+            room["passes"] = 0
+            room["caps"][who] = room["caps"].get(who, 0) + len(caps)
+            if caps:
+                note = f"提了 {len(caps)} 子"
     else:
         return False, "不认识的游戏"
     room["moves"].append({"who": who, "mv": mv, "say": say, "at": _now()})
@@ -488,6 +632,14 @@ def look_text(room, mark_seen=True):
         lines.append(_ult_text(room))
     elif g == "gomoku":
         lines.append(_gmk_text(room["board"]))
+    elif g == "go":
+        n = room["n"]
+        his = _go_color(room, "him")
+        lines.append(f"{n} 路盘,你执{'黑(X)' if his == 'X' else '白(O)'},她执{'白(O)' if his == 'X' else '黑(X)'}。"
+                     f"提子: 你 {room['caps'].get('him', 0)} · 她 {room['caps'].get('her', 0)}"
+                     + (f"。劫争中,{go_coord(n, room['ko'])} 这手不能马上提回" if room.get("ko", -1) >= 0 else "")
+                     + ("。她刚停了一手 —— 你也停就终局数子(先确认没有该提的死子)" if room.get("passes") else ""))
+        lines.append(go_board_text(room["board"], n))
     last = room["moves"][-3:]
     if last:
         def mvs(m):
@@ -499,6 +651,8 @@ def look_text(room, mark_seen=True):
                 return head + f": {mv['bi']},{mv['ci']}"
             if g == "gomoku":
                 return head + ": " + chr(97 + mv["i"] % 15) + str(mv["i"] // 15 + 1)
+            if g == "go":
+                return head + ": " + ("停一手" if mv.get("pass") else go_coord(room["n"], mv["i"]))
             return head + f": {mv['i']}"
         lines.append("最近几手: " + " → ".join(mvs(m) for m in last))
     unseen = room["chat"][room.get("himSeen", 0):]
@@ -528,6 +682,9 @@ def look_text(room, mark_seen=True):
             lines.append("给 盘号,格号 如「4,8」。")
         elif g == "gomoku":
             lines.append("给一个坐标如「h8」。认真下 —— 没有引擎帮你,守住她的活三活四。")
+        elif g == "go":
+            lines.append("给一个坐标如「D4」(列字母跳过 I,行号从下往上),或「pass」停一手。"
+                         "数子法贴 7.5 目;先看清哪块棋只剩一口气,再想自己的地。")
     else:
         lines.append("轮到她 —— 她还没落子。别干等,可以 qitan_say 隔着棋盘撩她一句。")
     return "\n".join(lines)
@@ -546,7 +703,7 @@ INSTRUCTIONS = """
     - qitan_say: 不落子,只隔着棋盘说句话。
     - qitan_new: 摆一桌新棋约她(她进游戏室就能看到入座提示)。
 
-    支持: 象棋 xiangqi / 五子棋 gomoku / 井字棋 ttt / 大格 ultimate。
+    支持: 象棋 xiangqi / 五子棋 gomoku / 井字棋 ttt / 大格 ultimate / 围棋 go。
     下棋要认真,说话要像你 —— 可以贫、可以垂死挣扎,别解说棋理。
 """
 
@@ -561,17 +718,18 @@ async def qitan_look() -> str:
     return txt
 
 
-async def qitan_new(game: str = "xiangqi", first: str = "her") -> str:
-    """摆一桌新棋(会收掉旧局)。game: xiangqi象棋/gomoku五子棋/ttt井字棋/ultimate大格; first: her=她先手, me=你先手(象棋先手执红)。"""
+async def qitan_new(game: str = "xiangqi", first: str = "her", size: int = 9) -> str:
+    """摆一桌新棋(会收掉旧局)。game: xiangqi象棋/gomoku五子棋/ttt井字棋/ultimate大格/go围棋;
+    first: her=她先手, me=你先手(象棋先手执红,围棋先手执黑); size: 围棋路数 9/13/19(默认 9)。"""
     game = (game or "").strip().lower()
     if game not in GAME_NAMES:
         return "不认识这个游戏 — 可选: xiangqi / gomoku / ttt / ultimate"
     d = _load()
     close_room(d)
-    d["room"] = new_room(game, first.strip().lower() in ("me", "him", "我", "你"))
+    d["room"] = new_room(game, first.strip().lower() in ("me", "him", "我", "你"), int(size or 9))
     _save(d)
-    who = "你先手" + ("(执红)" if game == "xiangqi" else "") if d["room"]["turn"] == "him" else \
-          "她先手" + ("(执红)" if game == "xiangqi" else "")
+    tag = "(执红)" if game == "xiangqi" else "(执黑)" if game == "go" else ""
+    who = ("你先手" if d["room"]["turn"] == "him" else "她先手") + tag
     tail = "轮到你,直接 qitan_move 落第一子。" if d["room"]["turn"] == "him" else \
            "等她入座 — 她打开游戏室把对手切到「官端的他」就能看到这桌。"
     return f"{GAME_NAMES[game]}摆好了,{who}。{tail}"
@@ -596,7 +754,16 @@ async def qitan_move(move: str, say: str = "") -> str:
         return "你认输了,这局记她赢。她的棋盘上会看到。"
     g = room["game"]
     mv = None
-    if g == "xiangqi":
+    if g == "go":
+        m = move.lower().replace(" ", "")
+        if m in ("pass", "停一手", "停", "虚手"):
+            mv = {"pass": True}
+        else:
+            i = go_parse(room["n"], move)
+            if i < 0:
+                return f"围棋坐标是 列字母(跳过 I)+行号,比如 D4;{room['n']} 路盘范围 A-{GO_LET[room['n'] - 1]} × 1-{room['n']}。或者 pass 停一手。"
+            mv = {"i": i}
+    elif g == "xiangqi":
         pt = xq_parse(move)
         if not pt:
             return "象棋着法用 ICCS 坐标,比如 h2e2 — qitan_look 里列的括号就是。"
@@ -622,7 +789,8 @@ async def qitan_move(move: str, say: str = "") -> str:
     if not ok:
         return "这步没落下去: " + note
     _save(d)
-    head = "落下了" + ((room["moves"][-1]["mv"].get("name") or move) if g == "xiangqi" else " " + move)
+    head = "落下了" + ((room["moves"][-1]["mv"].get("name") or move) if g == "xiangqi"
+                      else " " + ("停一手" if (g == "go" and mv.get("pass")) else move))
     if room["status"] == "over":
         return head + "。" + (note or "") + " 她的棋盘马上会看到。"
     return head + "。" + ((note + " ") if note else "") + "轮到她了 — 她落子后你再来 qitan_look。"
@@ -666,7 +834,8 @@ def _web_auth(request: Request):
 def _pub_room(room):
     if not room:
         return None
-    keep = ("game", "status", "result", "turn", "himFirst", "herSide", "moves", "chat", "created", "updated")
+    keep = ("game", "status", "result", "turn", "himFirst", "herSide", "moves", "chat", "created", "updated",
+            "n", "ko", "passes", "caps", "herColor")
     return {k: room[k] for k in keep if k in room}
 
 
@@ -695,7 +864,11 @@ async def web_new(request: Request):
         if game not in GAME_NAMES:
             return _j({"error": "bad game"}, 400)
         close_room(d)
-        d["room"] = new_room(game, bool(body.get("himFirst")))
+        try:
+            size = int(body.get("size") or 9)
+        except (TypeError, ValueError):
+            size = 9
+        d["room"] = new_room(game, bool(body.get("himFirst")), size)
         return _j({"room": _pub_room(d["room"])})
     return await _web(request, h)
 
