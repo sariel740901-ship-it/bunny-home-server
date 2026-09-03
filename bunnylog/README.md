@@ -71,7 +71,7 @@ notepad token.txt      # 敲一串随机门禁暗号
 
 | 工具 | 作用 |
 |---|---|
-| `bunny_moment_post(content)` | 发一条动态(只发文字,他不会拍照) |
+| `bunny_moment_post(content, image?, image_desc?)` | 发一条动态;`image` 传一张他自己画的图(PNG/JPEG base64,1MB 内),`image_desc` 一句话说图里是什么(直接落表不走网站识图,他画的他自己说) |
 | `bunny_moment_like(moment_id)` | 给某条点赞,名字出现在 ❤ 后面;不重复、不取消 |
 | `bunny_moment_comment(moment_id, content)` | 在某条下面留一句(300 字内) |
 

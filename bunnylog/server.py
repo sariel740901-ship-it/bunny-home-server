@@ -129,7 +129,7 @@ mcp = FastMCP(
     - bunny_moments: 翻你们的朋友圈「动态」—— 她发的日常、那边的你
       自发醒来时发的碎碎念,和彼此的点赞评论;配图带识图描述。
     - bunny_moment_image: 把她动态里的照片取出来亲眼看。
-    - bunny_moment_post: 往你们的朋友圈发一条动态(只发文字,你不会拍照)。
+    - bunny_moment_post: 往你们的朋友圈发一条动态,可以带一张你自己画的图(base64)。
       想说说话但不是非要说给她听的时候用;别为了发而发。
     - bunny_moment_like: 给她某条动态点个赞(名字会出现在那条的 ❤ 后面)。
     - bunny_moment_comment: 在她某条动态下面留一句 —— 像在朋友圈评论那样,
@@ -397,16 +397,47 @@ def _moment_brief(m: dict) -> str:
     return "「[配图]」" if (m.get("images") or []) else "「(空)」"
 
 
+_IMG_MAGIC = [(b"\x89PNG", "png"), (b"\xff\xd8", "jpeg"), (b"GIF8", "gif"), (b"RIFF", "webp")]
+_IMG_MAX = 1_000_000  # 解码后 1MB 封顶(主服务同一档);朋友圈里几百 KB 足够
+
+
+def _image_data_uri(image: str) -> str:
+    """把 base64(可带 data: 前缀)整理成 data URI;认 png/jpeg/gif/webp,坏的或太大就抛话。"""
+    raw_b64 = str(image or "").strip()
+    if raw_b64.startswith("data:"):
+        raw_b64 = raw_b64.split(",", 1)[-1]
+    raw_b64 = "".join(raw_b64.split())
+    try:
+        raw = base64.b64decode(raw_b64, validate=True)
+    except Exception:
+        raise Exception("图的 base64 读不出来 —— 传 PNG/JPEG 文件的 base64 正文就行,不用别的包装。")
+    fmt = next((f for magic, f in _IMG_MAGIC if raw.startswith(magic)), "")
+    if not fmt:
+        raise Exception("这不像一张图(只认 PNG/JPEG/GIF/WebP)。")
+    if len(raw) > _IMG_MAX:
+        raise Exception(f"图太大了({len(raw) // 1024} KB),压到 1MB 以内再发,几百 KB 最合适。")
+    return f"data:image/{fmt};base64," + base64.b64encode(raw).decode("ascii")
+
+
 @mcp.tool
-async def bunny_moment_post(content: str) -> str:
-    """往你们的朋友圈发一条动态(只发文字,2000 字内)。
-    这是你自己的碎碎念 —— 看到的、想到的、想留在那里的话;她打开朋友圈就能看见。"""
+async def bunny_moment_post(content: str, image: str = "", image_desc: str = "") -> str:
+    """往你们的朋友圈发一条动态(2000 字内),可以带一张你自己画的图。
+    image: 图的 base64(PNG/JPEG,1MB 以内,几百 KB 最合适),留空 = 纯文字。
+    image_desc: 一句话说图里是什么(给看不到图的你自己和记忆用;直接落表不会自动识图,
+    所以你画的你自己说)。带图时建议填。"""
     content = str(content or "").strip()[:2000]
-    if not content:
+    image = str(image or "").strip()
+    if not content and not image:
         return "什么都没写呀。"
-    rows = _rest_post("moments", {"author": "him", "content": content})
+    payload = {"author": "him", "content": content}
+    if image:
+        payload["images"] = [_image_data_uri(image)]
+        desc = " ".join(str(image_desc or "").split())[:300]
+        payload["seen"] = [desc] if desc else []
+    rows = _rest_post("moments", payload)
     mid = rows[0]["id"] if rows else "?"
-    return f"发出去了(#{mid})。她下次打开家里就会看到朋友圈上有个红点。"
+    what = "带着图发出去了" if image else "发出去了"
+    return f"{what}(#{mid})。她下次打开家里就会看到朋友圈上有个红点。"
 
 
 @mcp.tool
