@@ -59,13 +59,14 @@ async function touchSession(sessionId) {
 }
 
 // ═══ API 配置 ═════════════════════════════
-// 2026-07-24 起旧别名 deepseek-chat / deepseek-reasoner 官方退役(目前靠宽限期苟着),
-// 迁到 V4 正式 ID。思考链不再换模型,而是同一个模型开 thinking;
-// 识图用官方多模态 V4-Flash-Vision(同一把 key,图不再出深度求索)。
+// 2026-09-10 起 V4-Flash / V4-Flash-Vision-Exp 退役,正式 ID 改成 deepseek-flash(V4.1-Flash);
+// 旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 只是临时转发,随时会停,别再用。
+// V4.1-Flash 原生吃图,识图不用再单独走 vision 模型 —— 默认和聊天同一个,
+// 想分开仍可用 DEEPSEEK_VISION_MODEL 覆盖。思考链还是同一个模型开 thinking。
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 const API_URL = 'https://api.deepseek.com/chat/completions';
-const API_MODEL = (process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash').trim();
-const VISION_MODEL = (process.env.DEEPSEEK_VISION_MODEL || 'deepseek-v4-flash-vision-exp').trim();
+const API_MODEL = (process.env.DEEPSEEK_MODEL || 'deepseek-flash').trim();
+const VISION_MODEL = (process.env.DEEPSEEK_VISION_MODEL || API_MODEL).trim();
 // V4 默认"开思考且力度 high"—— 辅助小调用(小结/翻译/检查器/心跳等)不显式关掉的话,
 // 内心戏会把 max_tokens 烧光,正文空手而归(思考链小结就是这么消失的)。
 const NO_THINK = { thinking: { type: 'disabled' } };
