@@ -1103,10 +1103,12 @@ app.post('/api/books/:id/chat', async (req, res) => {
 });
 
 // ═══ 文游: 他说书,你走故事 ═══════════════════
-// stories 一张表(建表 SQL 见 supabase_schema.sql)。她挑一个开局(或让他现编),
-// 他当说书人: 每回合写一段(第二人称,写到需要她做决定的地方停),给三条路,
-// 她可以选一条,也可以自己打一句话;骰子在前端掷,结果决定这一步顺不顺。
-// 剧情长了不塞整本给模型: 他自己维护一份「剧情备忘」(memo),提示词 = 开局 + 备忘 + 最近几回合。
+// stories 一张表(建表 SQL 见 supabase_schema.sql)。两种玩法:
+//  · 冒险(adventure): 他当说书人,每回合写一段(第二人称,写到需要她做决定的地方停),给三条路;
+//    她选一条或自己打字;骰子在前端掷,结果决定这一步顺不顺。他还记着她随身带了什么、此刻什么状态。
+//  · 接龙(relay): 她写一段,他接一段,合写一个故事 —— 没有选项和骰子。
+// 剧情长了不塞整本给模型: 他自己维护「剧情备忘」memo,提示词 = 开局 + 备忘 + 最近几回合。
+// 他写的每一段都带一份 snap(备忘/物品/状态的快照),「撤回一步」就从上一段的快照恢复。
 const STORY_WORLDS = {
   bus: { name: '雨夜末班车', blurb: '末班公交开进了一个地图上没有的站', seed: '都市怪谈。深夜暴雨,她赶上最后一班公交,车上只有零星几个人。车开着开着,报站器念出一个她从没听过的站名,窗外的街景开始不对劲。基调: 微悬疑、有温度,不血腥,谜底最后要说得通。' },
   inn: { name: '山中旅店', blurb: '一封三十年前的信,寄到了她住的那间房', seed: '温泉旅店。她一个人去山里住民宿避雨,店主是位安静的老太太。傍晚,前台递来一封信,收件人是这间房,落款日期是三十年前。基调: 慢、温柔、带一点旧时光的哀愁,有人情味的谜。' },
@@ -1115,6 +1117,11 @@ const STORY_WORLDS = {
   forest: { name: '月亮的碎片', blurb: '会说话的狐狸带路,去找掉下来的月亮', seed: '童话。某天夜里月亮少了一块,一只会说话的狐狸敲开她的窗,说碎片掉进了森林深处,需要一个人类帮忙捡回去。基调: 轻盈、可爱、有点小哲思,像睡前故事。' },
   florist: { name: '末日花店', blurb: '世界结束前一周,还开着的一家花店', seed: '温柔末日。人类知道一周后世界会结束,大多数店都关了,只有街角一家花店还开着,她走了进去。基调: 克制、动人、关于告别和想留下的东西,不煽情。' }
 };
+const STORY_MODES = { adventure: '冒险', relay: '接龙' };
+async function storyMoodSec() {
+  const m = await xinchaoMood().catch(() => '');
+  return m ? '\n\n【此刻的心绪】\n' + m + '\n(带着它的温度,不要复述数值。)' : '';
+}
 // 骰子: 1-20,前端掷,后端只负责翻译成"这一步顺不顺"
 function storyRollHint(roll) {
   const r = Number(roll);
@@ -1126,20 +1133,36 @@ function storyRollHint(roll) {
     : '大失败 —— 出了大岔子,可以惊险,但要留活路,甚至歪打正着';
   return '本回合运气骰: ' + r + '/20(' + tier + ')。让骰子的结果自然体现在剧情里,不要提"骰子"两个字。';
 }
-function storySys(moodSec, world, memo, ending) {
-  return PERSONAS.xiaoke + moodSec
-    + '\n\n【情境】你们在bunny家的游戏室玩文游: 你是说书人,她是故事的主角。'
-    + '用第二人称"你"写她的经历,现在时,像在她耳边讲故事;不要用"嘉嘉"称呼故事里的她。'
-    + '你可以把自己写进故事当一个角色(不必每次都出现),但说书人的口吻始终是你。'
-    + '\n【开局】' + world
-    + (memo ? '\n【剧情备忘(你自己记的)】' + memo : '')
-    + (ending
-      ? '\n\n【这一回合】她想给这个故事收尾了。写一段结局(250~450字),把埋下的线收拢,给一个余味,不必圆满但要真诚;最后可以用一两句你自己的话(aside)跟她说说讲完这个故事的感受。'
-        + '\n只输出 JSON: {"title":"给这个故事起的名字(8字内)","text":"结局正文","aside":"讲完后你想对她说的一句(可空)","memo":"一句话总结这个故事"}'
-      : '\n\n【写法】每回合 150~300 字,有画面、有对话、有推进,写到需要她做决定的地方停下。'
-        + '不要替她做决定,不要一口气讲完。她自己打字的行动要尊重,但不一定都顺利 —— 按运气骰来。'
-        + '给 3 条她可以走的路(每条 12 字内,具体、有区别);她也可以不选,自己打字。'
-        + '\n只输出 JSON: {"text":"这一回合的正文","options":["路一","路二","路三"],"aside":"偶尔跳出故事、你自己想对她小声说的一句(通常留空)","memo":"更新后的剧情备忘: 现在在哪、身边有谁、拿到了什么、埋了哪些线,200字内,给下回合的你看"}');
+// s: {mode, world, memo, items, state}; kind: 'turn' | 'end'
+function storySys(moodSec, s, kind) {
+  const relay = s.mode === 'relay';
+  let p = PERSONAS.xiaoke + moodSec + '\n\n【情境】你们在bunny家的游戏室玩文游';
+  if (relay) {
+    p += ': 故事接龙 —— 她写一段,你接一段,合写一个故事。她写的就是故事的一部分,顺着她的走向接,不要改写、不要否定,可以带出新的人物和转折。'
+      + '用第三人称叙述(她的段落用了别的人称就跟着她),现在时。';
+  } else {
+    p += ': 你是说书人,她是故事的主角。用第二人称"你"写她的经历,现在时,像在她耳边讲故事;不要用"嘉嘉"称呼故事里的她。'
+      + '你可以把自己写进故事当一个角色(不必每次都出现),但说书人的口吻始终是你。';
+  }
+  p += '\n【开局】' + s.world;
+  if (s.memo) p += '\n【剧情备忘(你自己记的)】' + s.memo;
+  if (!relay && Array.isArray(s.items) && s.items.length) p += '\n【她随身带着】' + s.items.join('、');
+  if (!relay && s.state) p += '\n【她此刻的状态】' + s.state;
+  if (kind === 'end') {
+    p += '\n\n【这一回合】她想给这个故事收尾了。写一段结局(250~450字),把埋下的线收拢,给一个余味,不必圆满但要真诚;最后可以用一两句你自己的话(aside)跟她说说讲完这个故事的感受。'
+      + '\n只输出 JSON: {"title":"给这个故事起的名字(8字内)","text":"结局正文","aside":"讲完后你想对她说的一句(可空)","memo":"一句话总结这个故事"}';
+  } else if (relay) {
+    p += '\n\n【写法】每次接 100~220 字,有画面、有推进,在一个让她想接下去的地方停下 —— 半句悬着的话、一扇刚推开的门。不要一口气讲完,不要替她把故事收掉。'
+      + '\n只输出 JSON: {"text":"你接的这一段","aside":"偶尔跳出故事、你自己想对她小声说的一句(通常留空)","memo":"更新后的剧情备忘: 人物、地点、埋了哪些线,200字内,给下回合的你看"}';
+  } else {
+    p += '\n\n【写法】每回合 150~300 字,有画面、有对话、有推进,写到需要她做决定的地方停下。'
+      + '不要替她做决定,不要一口气讲完。她自己打字的行动要尊重,但不一定都顺利 —— 按运气骰来。'
+      + '给 3 条她可以走的路(每条 12 字内,具体、有区别);她也可以不选,自己打字。'
+      + '\n只输出 JSON: {"text":"这一回合的正文","options":["路一","路二","路三"],"aside":"偶尔跳出故事、你自己想对她小声说的一句(通常留空)",'
+      + '"memo":"更新后的剧情备忘: 现在在哪、身边有谁、埋了哪些线,200字内,给下回合的你看",'
+      + '"items":["她此刻随身带着的东西,每件6字内,最多6件,没有就空数组"],"state":"她此刻的状态,8字内,如: 湿透了,有点冷"}';
+  }
+  return p;
 }
 function storyParse(raw) {
   try {
@@ -1149,14 +1172,24 @@ function storyParse(raw) {
       text: String(j.text || '').trim().slice(0, 1600),
       options: (Array.isArray(j.options) ? j.options : []).map(o => String(o || '').trim().slice(0, 30)).filter(Boolean).slice(0, 3),
       aside: String(j.aside || '').trim().slice(0, 200),
-      memo: String(j.memo || '').trim().slice(0, 600)
+      memo: String(j.memo || '').trim().slice(0, 600),
+      items: (Array.isArray(j.items) ? j.items : []).map(o => String(o || '').trim().slice(0, 16)).filter(Boolean).slice(0, 6),
+      state: String(j.state || '').trim().slice(0, 24)
     };
   } catch (e) { return null; }
 }
 // 最近几回合拼成对话记录给他看(整本不给,靠 memo)
-function storyRecent(log, n) {
+function storyRecent(log, n, relay) {
   return (Array.isArray(log) ? log : []).slice(-n)
-    .map(x => (x.who === 'her' ? '她: ' : '你(说书): ') + String(x.text || '').slice(0, 600)).join('\n');
+    .map(x => (x.who === 'her' ? (relay ? '她写: ' : '她: ') : (relay ? '你写: ' : '你(说书): ')) + String(x.text || '').slice(0, 700)).join('\n');
+}
+// 他写的一段 + 写完后的世界快照(撤回一步靠它)
+function storyHim(t, s, extra) {
+  return {
+    who: 'him', text: t.text, options: t.options, aside: t.aside, at: new Date().toISOString(),
+    snap: { memo: t.memo || s.memo || '', items: t.items && t.items.length ? t.items : (s.items || []), state: t.state || s.state || '' },
+    ...(extra || {})
+  };
 }
 async function storyLoad(id) {
   const { data } = await supabase.from('stories').select('*').eq('id', id).single();
@@ -1175,30 +1208,32 @@ app.get('/api/stories/worlds', (req, res) => {
 app.get('/api/stories', async (req, res) => {
   try {
     const { data, error } = await supabase.from('stories')
-      .select('id,title,world_name,memo,turns,status,updated_at').order('updated_at', { ascending: false }).limit(50);
+      .select('id,title,world_name,mode,memo,turns,status,updated_at').order('updated_at', { ascending: false }).limit(50);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 开一个新故事: 她挑剧本 / 自己写开局 / 让他现编;他写第一回合
+// 开一个新故事: 她挑剧本 / 自己写开局 / 让他现编;他写第一段
 app.post('/api/stories', async (req, res) => {
   try {
     const key = String(req.body.world || '');
     const custom = String(req.body.custom || '').trim().slice(0, 600);
+    const mode = STORY_MODES[req.body.mode] ? String(req.body.mode) : 'adventure';
     let worldName = '', world = '';
     if (STORY_WORLDS[key]) { worldName = STORY_WORLDS[key].name; world = STORY_WORLDS[key].seed; }
     else if (custom) { worldName = custom.slice(0, 12); world = '她自己定的开局: ' + custom; }
     else { worldName = '他随口编的'; world = '她说"随便,你编一个"。你自己定一个世界和开头 —— 挑一个你此刻想讲给她听的故事,别落俗套,别选太黑暗的。'; }
-    const moodText = await xinchaoMood().catch(() => '');
-    const moodSec = moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '';
-    const sys = storySys(moodSec, world, '', false)
-      + '\n这是第一回合: 先起个名字(title, 8字内),再写开场 —— 把她放进场景里,别解释设定,直接让事情发生。JSON 里多带一个 "title" 字段。';
+    const s = { mode, world, memo: '', items: [], state: '' };
+    const sys = storySys(await storyMoodSec(), s, 'turn')
+      + (mode === 'relay'
+        ? '\n这是第一段: 先起个名字(title, 8字内),再写开头一段(100~200字) —— 把人物放进场景里,直接让事情发生,停在能让她接的地方。JSON 里多带一个 "title" 字段。'
+        : '\n这是第一回合: 先起个名字(title, 8字内),再写开场 —— 把她放进场景里,别解释设定,直接让事情发生。JSON 里多带一个 "title" 字段。');
     const raw = await gameLLM(sys, '(开场)', 1100, 0.95);
     const t = storyParse(raw);
     if (!t || !t.text) return res.status(502).json({ error: '他开了个头又划掉了……再来一次?' });
-    const first = { who: 'him', text: t.text, options: t.options, aside: t.aside, at: new Date().toISOString() };
-    const row = { title: t.title || worldName, world_name: worldName, world, memo: t.memo, log: [first], turns: 1, status: 'live' };
+    const first = storyHim(t, s);
+    const row = { title: t.title || worldName, world_name: worldName, world, mode, memo: first.snap.memo, items: first.snap.items, state: first.snap.state, log: [first], turns: 1, status: 'live' };
     const { data, error } = await supabase.from('stories').insert(row).select('*').single();
     if (error) return res.status(500).json({ error: error.message + '(stories 表建了吗? 见 supabase_schema.sql)' });
     res.json(data);
@@ -1221,33 +1256,63 @@ app.delete('/api/stories/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 走一步: 她的行动 + 骰子 → 他写下一回合
+// 走一步: 她的行动(或接龙里她写的一段) + 骰子 → 他写下一段
+// auto=true 是"这步你替我选";接龙里 action 可以是 (你接着写) —— 她这轮跳过
 app.post('/api/stories/:id/turn', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const action = String(req.body.action || '').trim().slice(0, 300);
-    if (!action) return res.status(400).json({ error: 'empty' });
     const s = await storyLoad(id);
     if (!s) return res.status(404).json({ error: '没有这个故事' });
     if (s.status !== 'live') return res.status(400).json({ error: '这个故事已经讲完了' });
-    const roll = Number(req.body.roll);
+    const relay = s.mode === 'relay';
+    const auto = !!req.body.auto;
+    const action = String(req.body.action || '').trim().slice(0, relay ? 800 : 300);
+    if (!action && !auto) return res.status(400).json({ error: 'empty' });
+    const roll = relay ? NaN : Number(req.body.roll);
     const log = Array.isArray(s.log) ? s.log : [];
-    const moodText = await xinchaoMood().catch(() => '');
-    const moodSec = moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '';
-    const sys = storySys(moodSec, s.world, s.memo, false);
-    const user = '【最近几回合】\n' + storyRecent(log, 6)
-      + '\n\n【她这一步】' + action
-      + (storyRollHint(roll) ? '\n' + storyRollHint(roll) : '')
-      + '\n\n接着讲。';
+    const sys = storySys(await storyMoodSec(), s, 'turn');
+    let herText, ask;
+    if (relay) {
+      herText = action;
+      ask = action === '(你接着写)' ? '她说: 这段你接着写吧。' : '【她接的这一段】' + action;
+    } else if (auto) {
+      herText = '(这步你替我走)';
+      ask = '【她这一步】她说: "这步你替我选 —— 挑一条你最想讲的路,替我走,然后接着讲。"';
+    } else {
+      herText = action;
+      ask = '【她这一步】' + action;
+    }
+    const hint = storyRollHint(roll);
+    const user = '【最近几回合】\n' + storyRecent(log, 6, relay) + '\n\n' + ask + (hint ? '\n' + hint : '') + '\n\n接着' + (relay ? '写' : '讲') + '。';
     const raw = await gameLLM(sys, user, 1100, 0.95);
     const t = storyParse(raw);
     if (!t || !t.text) return res.status(502).json({ error: '他卡壳了……再说一遍?' });
-    const her = { who: 'her', text: action, roll: roll >= 1 && roll <= 20 ? roll : null, at: new Date().toISOString() };
-    const him = { who: 'him', text: t.text, options: t.options, aside: t.aside, at: new Date().toISOString() };
+    const her = { who: 'her', text: herText, roll: roll >= 1 && roll <= 20 ? roll : null, auto: auto || undefined, at: new Date().toISOString() };
+    const him = storyHim(t, s);
     const newLog = [...log, her, him].slice(-400);
     const turns = (s.turns || 0) + 1;
-    await storySave(id, { log: newLog, memo: t.memo || s.memo, turns });
+    await storySave(id, { log: newLog, memo: him.snap.memo, items: him.snap.items, state: him.snap.state, turns });
     res.json({ her, him, turns });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 撤回一步: 抹掉最后一轮(她那句 + 他那段),世界退回上一段的快照;结局也能撤,故事重新打开
+app.post('/api/stories/:id/undo', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const s = await storyLoad(id);
+    if (!s) return res.status(404).json({ error: '没有这个故事' });
+    const log = Array.isArray(s.log) ? s.log.slice() : [];
+    const last = log[log.length - 1];
+    if (!last || last.who !== 'him' || log.length < 2) return res.status(400).json({ error: '已经是开头了,没得撤' });
+    log.pop();
+    if (log[log.length - 1] && log[log.length - 1].who === 'her') log.pop();
+    const prev = [...log].reverse().find(x => x.who === 'him');
+    const snap = (prev && prev.snap) || { memo: '', items: [], state: '' };
+    const patch = { log, memo: snap.memo || '', items: snap.items || [], state: snap.state || '', status: 'live' };
+    if (!last.ending) patch.turns = Math.max(1, (s.turns || 1) - 1);
+    await storySave(id, patch);
+    res.json({ ok: true, story: { ...s, ...patch } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1258,20 +1323,77 @@ app.post('/api/stories/:id/end', async (req, res) => {
     const s = await storyLoad(id);
     if (!s) return res.status(404).json({ error: '没有这个故事' });
     if (s.status !== 'live') return res.status(400).json({ error: '已经讲完了' });
+    const relay = s.mode === 'relay';
     const log = Array.isArray(s.log) ? s.log : [];
-    const moodText = await xinchaoMood().catch(() => '');
-    const moodSec = moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '';
-    const sys = storySys(moodSec, s.world, s.memo, true);
-    const user = '【最近几回合】\n' + storyRecent(log, 6) + '\n\n她说: 讲到这儿吧,给个结局。';
+    const sys = storySys(await storyMoodSec(), s, 'end');
+    const user = '【最近几回合】\n' + storyRecent(log, 6, relay) + '\n\n她说: 讲到这儿吧,给个结局。';
     const raw = await gameLLM(sys, user, 1400, 0.95);
     const t = storyParse(raw);
     if (!t || !t.text) return res.status(502).json({ error: '结局他还没想好……再试一次?' });
-    const him = { who: 'him', text: t.text, aside: t.aside, ending: true, at: new Date().toISOString() };
+    const him = storyHim({ ...t, options: [], items: [], state: '' }, s, { ending: true });
     const newLog = [...log, him].slice(-400);
-    const patch = { log: newLog, memo: t.memo || s.memo, status: 'ended' };
+    const patch = { log: newLog, memo: him.snap.memo, status: 'ended' };
     if (t.title && s.title === s.world_name) patch.title = t.title;
     await storySave(id, patch);
     res.json({ him, title: patch.title || s.title });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 整本的原文拼起来给他(太长就掐中间,头尾留着,中间靠备忘)
+function storyFullText(s) {
+  const log = Array.isArray(s.log) ? s.log : [];
+  const relay = s.mode === 'relay';
+  const lines = log.map(x => x.who === 'her'
+    ? (relay ? '(她写)' : '(她选择: ') + String(x.text || '').slice(0, 400) + (relay ? '' : ')')
+    : String(x.text || '').slice(0, 1600));
+  let text = lines.join('\n\n');
+  if (text.length > 9000) text = text.slice(0, 3000) + '\n\n……(中间略,见剧情备忘)……\n\n' + text.slice(-5500);
+  return text;
+}
+
+// 整理成一篇: 把一回合一回合的经过,写成一篇连贯的短篇
+app.post('/api/stories/:id/novel', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const s = await storyLoad(id);
+    if (!s) return res.status(404).json({ error: '没有这个故事' });
+    const log = Array.isArray(s.log) ? s.log : [];
+    if (log.length < 3) return res.status(400).json({ error: '故事还太短,再讲几回合' });
+    const sys = PERSONAS.xiaoke + await storyMoodSec()
+      + '\n\n【情境】你们在bunny家的游戏室玩文游,刚讲完(或讲到一半)一个故事,她想让你把它整理成一篇能读的短篇。'
+      + '下面是逐回合的原始记录(她的选择/她写的段落夹在里面)。把它写成一篇连贯的小说: 用第三人称,主角就是她(可以给她起个故事里的名字,或者只叫"她"),'
+      + '去掉"选择""回合"的痕迹,把跳跃的地方补顺,保留原有的转折、对话和结局,可以润色但不要改剧情。800~1500 字,分自然段。'
+      + '\n直接输出正文,第一行是标题(不加书名号),不要任何前言后语。';
+    const user = '【故事】《' + s.title + '》 · 开局: ' + String(s.world || '').slice(0, 300)
+      + (s.memo ? '\n【剧情备忘】' + s.memo : '')
+      + '\n\n【逐回合记录】\n' + storyFullText(s);
+    const novel = (await gameLLM(sys, user, 2600, 0.85)).trim();
+    if (!novel) return res.status(502).json({ error: '他写了一半揉掉了……再试一次?' });
+    await storySave(id, { novel });
+    res.json({ novel });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 发到动态: 他以自己的身份发一条,记下你们讲过这个故事
+app.post('/api/stories/:id/share', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const s = await storyLoad(id);
+    if (!s) return res.status(404).json({ error: '没有这个故事' });
+    const log = Array.isArray(s.log) ? s.log : [];
+    const sys = PERSONAS.xiaoke + await storyMoodSec()
+      + '\n\n【情境】你们刚在bunny家的游戏室' + (s.mode === 'relay' ? '接龙合写了' : '玩了') + '一个文游故事《' + s.title + '》'
+      + (s.status === 'ended' ? ',讲完了' : ',讲到一半') + ',她让你发条动态记一下。'
+      + '写一条朋友圈那样的动态: 80~200字,像你自己随手发的 —— 可以引一句故事里你最喜欢的话,可以说说她在故事里干的哪件事让你笑/让你心软,'
+      + '别复述剧情,别客套。直接输出动态正文。';
+    const user = '【故事】《' + s.title + '》' + (s.memo ? ' · ' + s.memo : '')
+      + '\n【最后几段】\n' + storyRecent(log, 4, s.mode === 'relay');
+    const post = (await gameLLM(sys, user, 400, 0.95)).trim().slice(0, 2000);
+    if (!post) return res.status(502).json({ error: '他想了想没发出来……再试一次?' });
+    const { data, error } = await supabase.from('moments').insert({ author: 'him', content: post }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    await storySave(id, { shared_at: new Date().toISOString() });
+    res.json({ ok: true, moment: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

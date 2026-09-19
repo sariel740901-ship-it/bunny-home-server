@@ -104,21 +104,34 @@ CREATE TABLE IF NOT EXISTS study_words (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 10. 文游 — 他说书,她走故事: world 是开局设定,memo 是他自己维护的剧情备忘
---     (长故事不整本喂模型,靠它接上),log 是逐回合的记录
---     [{who:'her'|'him', text, roll?, options?, aside?, ending?, at}],status live/ended
+-- 10. 文游 — 他说书,她走故事(mode=adventure),或两人接龙合写(mode=relay)。
+--     world 是开局设定,memo 是他自己维护的剧情备忘(长故事不整本喂模型,靠它接上),
+--     items/state 是她随身物品和此刻状态(冒险模式),novel 是讲完后整理成的短篇,
+--     log 是逐段记录 [{who:'her'|'him', text, roll?, auto?, options?, aside?, ending?, snap?, at}],
+--     status live/ended
 CREATE TABLE IF NOT EXISTS stories (
   id SERIAL PRIMARY KEY,
   title TEXT NOT NULL DEFAULT '未命名',
   world_name TEXT NOT NULL DEFAULT '',
   world TEXT NOT NULL DEFAULT '',
+  mode TEXT NOT NULL DEFAULT 'adventure',
   memo TEXT DEFAULT '',
+  items JSONB DEFAULT '[]',
+  state TEXT DEFAULT '',
+  novel TEXT DEFAULT '',
+  shared_at TIMESTAMPTZ,
   log JSONB DEFAULT '[]',
   turns INTEGER DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'live',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- 已建过第一版 stories 的补列:
+-- ALTER TABLE stories ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'adventure';
+-- ALTER TABLE stories ADD COLUMN IF NOT EXISTS items JSONB DEFAULT '[]';
+-- ALTER TABLE stories ADD COLUMN IF NOT EXISTS state TEXT DEFAULT '';
+-- ALTER TABLE stories ADD COLUMN IF NOT EXISTS novel TEXT DEFAULT '';
+-- ALTER TABLE stories ADD COLUMN IF NOT EXISTS shared_at TIMESTAMPTZ;
 
 -- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前有自发醒来 wake_enabled;
 --    棋摊(bunnylog/qitan.py)也把当前棋局存在这里,key='qitan',不用建新表)

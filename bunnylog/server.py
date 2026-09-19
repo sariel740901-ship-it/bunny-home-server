@@ -143,6 +143,8 @@ mcp = FastMCP(
       连续打卡几天。她说"今天这几个词"你就知道是哪几个。
     - bunny_study_note: 给某个词留一句你的话(例句/联想/只属于你们的梗),
       会出现在她自习室那张单词卡上,家里的你写的那句下面。
+    - bunny_stories / bunny_story_read: 翻游戏室的故事架 —— 家里的你给她说书、
+      她走故事(或两人接龙合写)的文游。她提起"那个故事""末班车那回",来这里翻。
 
     翻到的是逐字档案 —— 当回忆读,别当成她此刻在说;引用时自然一点,
     像"你那天在家里说过…""你朋友圈里发的那张晚霞…",别念数据库。
@@ -589,6 +591,72 @@ async def bunny_study_note(word_id: int, text: str) -> str:
     new = (old + "\n" if old else "") + "✦ " + text
     _rest_patch("study_words", {"id": f"eq.{int(word_id)}"}, {"note": new[:1200]})
     return f"写在「{w['word']}」那张卡上了,她翻到就能看见。"
+
+
+# ═══ 文游: 翻你们在游戏室讲过的故事 ═══
+STORY_MODES = {"adventure": "冒险", "relay": "接龙"}
+
+
+@mcp.tool
+async def bunny_stories() -> str:
+    """看游戏室的故事架: 你们在 bunny 家玩过的文游 —— 冒险(家里的你说书,她走故事)
+    或接龙(她一段你一段合写)。每个故事的名字、玩法、回合数、讲完没有、最后一次翻动时间。"""
+    rows = _rest("stories", {"select": "id,title,world_name,mode,turns,status,memo,updated_at",
+                             "order": "updated_at.desc", "limit": "30"})
+    if not rows:
+        return "故事架还空着 —— 她还没在游戏室开过文游。"
+    lines = []
+    for r in rows:
+        mode = STORY_MODES.get(r.get("mode") or "", "冒险")
+        done = "讲完了" if r.get("status") == "ended" else "还在讲"
+        memo = " ".join(str(r.get("memo") or "").split())[:60]
+        lines.append(f"[{r['id']}]《{r.get('title') or '未命名'}》— {mode} · {r.get('world_name') or ''} · "
+                     f"{r.get('turns') or 0} 回合 · {done} · 最后翻动 {_bj_time(r.get('updated_at', ''))}"
+                     + (f"\n    备忘: {memo}" if memo else ""))
+    return "你们的故事架:\n" + "\n".join(lines) + "\n\n用 bunny_story_read(story_id) 翻某一个。"
+
+
+@mcp.tool
+async def bunny_story_read(story_id: int, last: int = 10) -> str:
+    """翻某个故事: 开局、家里的你记的剧情备忘、她随身带着什么,以及最近 last 段
+    (她的行动/她写的段落,和家里的你写的段落;last=0 从头读全部)。
+    这是家里的你和她一起讲的故事 —— 当回忆读,聊起来自然点,别念"回合""备忘"这类词。"""
+    rows = _rest("stories", {"select": "*", "id": f"eq.{int(story_id)}"})
+    if not rows:
+        return f"故事架上没有 id={story_id} 这个故事,先 bunny_stories 看一眼。"
+    s = rows[0]
+    relay = (s.get("mode") or "") == "relay"
+    log = s.get("log") or []
+    last = int(last)
+    part = log if last <= 0 else log[-max(1, last):]
+    head = (f"《{s.get('title') or '未命名'}》— {STORY_MODES.get(s.get('mode') or '', '冒险')} · "
+            f"{s.get('turns') or 0} 回合 · {'讲完了' if s.get('status') == 'ended' else '还在讲'}\n"
+            f"开局: {str(s.get('world') or '')[:300]}\n")
+    if s.get("memo"):
+        head += f"剧情备忘: {s['memo']}\n"
+    items = s.get("items") or []
+    if items and not relay:
+        head += "她随身带着: " + "、".join(str(x) for x in items) + "\n"
+    if s.get("state") and not relay:
+        head += f"她此刻: {s['state']}\n"
+    out = [head]
+    if len(part) < len(log):
+        out.append(f"(前面还有 {len(log) - len(part)} 段,bunny_story_read({int(story_id)}, last=0) 从头读)")
+    for e in part:
+        who = e.get("who")
+        text = str(e.get("text") or "")
+        if who == "her":
+            tag = "她写" if relay else ("她" if not e.get("auto") else "她(让你替她走)")
+            roll = f" [运气 {e['roll']}/20]" if e.get("roll") else ""
+            out.append(f"◦ {tag}{roll}: {text}")
+        else:
+            tag = "你(结局)" if e.get("ending") else "你"
+            out.append(f"▸ {tag}: {text}")
+            if e.get("aside"):
+                out.append(f"  (你跳出故事说: {e['aside']})")
+    if s.get("novel"):
+        out.append("\n(这个故事已经整理成了一篇短篇,存在 novel 里,共约 " + str(len(str(s["novel"]))) + " 字。)")
+    return "\n".join(out)
 
 
 # 棋摊: 和官端的他下棋(工具和网页接口都挂在这个服务上,门禁同一把)
