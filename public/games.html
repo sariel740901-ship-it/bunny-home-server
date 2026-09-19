@@ -178,6 +178,14 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .stc{font-size:11.5px;color:var(--muted);border:1px solid var(--border);background:var(--card);border-radius:8px;padding:3px 8px}
 .stc.state{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
 .stc:not(.state)::before{content:'· '}
+.stspk{display:none;align-items:center;gap:4px;margin:6px 0 0 auto;border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:8px;padding:2px 9px;font-size:11.5px;font-family:inherit;cursor:pointer;line-height:1.6}
+#stLog.voice .stspk{display:inline-flex}
+.stspk.playing{color:var(--accent);border-color:var(--accent)}
+.stspk.playing::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.2}}
+.stp{display:flex;flex-direction:column}
+.stp .stt{white-space:pre-wrap}
+#stVoiceBtn.on{color:var(--accent);border-color:var(--accent)}
 .hide{display:none !important}
 body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
@@ -326,7 +334,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
       <div id="stList"><div class="emptyb">还没有故事 —— 开一个,让他讲给你听</div></div>
     </div>
     <div id="stPlay" class="hide">
-      <div class="ctrl"><button class="pill" onclick="stClose()">故事架</button><span class="status" id="stInfo"></span><button class="pill hide" id="stUndoBtn" onclick="stUndo()">撤回</button><button class="pill hide" id="stEndBtn" onclick="stEnd()">收个尾</button></div>
+      <div class="ctrl"><button class="pill" onclick="stClose()">故事架</button><span class="status" id="stInfo"></span><button class="pill" id="stVoiceBtn" onclick="stVoiceToggle()" title="念给我听">🔈</button><button class="pill hide" id="stUndoBtn" onclick="stUndo()">撤回</button><button class="pill hide" id="stEndBtn" onclick="stEnd()">收个尾</button></div>
       <div class="strecap hide" id="stRecap"></div>
       <div class="ststat hide" id="stStat"></div>
       <div class="stlog" id="stLog"></div>
@@ -344,7 +352,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
         <div class="ctrl"><button class="pill" id="stNovelBtn" onclick="stNovel()">整理成一篇</button><button class="pill" id="stShareBtn" onclick="stShare()">让他发条动态</button><span class="status" id="stAfterInfo"></span></div>
         <div id="stNovelBox" class="hide">
           <div class="page" id="stNovel" style="min-height:0"></div>
-          <div class="ctrl" style="margin-top:8px"><button class="pill" onclick="stCopyNovel()">复制全文</button><button class="pill" onclick="stNovel(true)">重写一版</button></div>
+          <div class="ctrl" style="margin-top:8px"><button class="pill" onclick="stCopyNovel()">复制全文</button><button class="pill" onclick="stShelve()">放上书架</button><button class="pill" onclick="stNovel(true)">重写一版</button></div>
         </div>
       </div>
     </div>
@@ -1513,7 +1521,7 @@ function stShow(s,fresh){
   window.scrollTo(0,fresh?0:document.body.scrollHeight);
 }
 function stClose(){
-  stCur=null;
+  stCur=null;if(stCurVoice){stCurVoice.stop();stCurVoice=null}
   document.getElementById('stPlay').classList.add('hide');
   document.getElementById('stShelf').classList.remove('hide');
   refreshStories();
@@ -1541,11 +1549,16 @@ function stAppend(e,anim){
     return Promise.resolve();
   }
   const d=document.createElement('div');d.className='stp'+(e.ending?' ending':'');
-  if(!anim){d.style.animation='none';d.textContent=e.text||''}
+  const t=document.createElement('div');t.className='stt';d.appendChild(t);
+  const spk=document.createElement('button');spk.className='stspk';spk.textContent='念这段';spk.onclick=ev=>{ev.stopPropagation();stSpeak(spk,e.text||'')};d.appendChild(spk);
+  if(!anim){d.style.animation='none';t.textContent=e.text||''}
   host.appendChild(d);
-  const after=()=>{if(e.aside){const a=document.createElement('div');a.className='sta';a.textContent=e.aside;host.appendChild(a)}};
+  const after=()=>{
+    if(e.aside){const a=document.createElement('div');a.className='sta';a.textContent=e.aside;host.appendChild(a)}
+    if(anim&&stVoice)stSpeak(spk,e.text||'');
+  };
   if(!anim){after();return Promise.resolve()}
-  return stTypewrite(d,e.text||'').then(after);
+  return stTypewrite(t,e.text||'').then(after);
 }
 function stRenderState(){
   const s=stCur;if(!s)return;
@@ -1682,6 +1695,56 @@ async function stShare(){
   if(!r.ok||!r.d||!r.d.moment){alert((r.d&&r.d.error)||'没发出去…');return}
   stCur.shared_at=new Date().toISOString();stRenderState();
   if(confirm('发好了:\n\n'+String(r.d.moment.content||'').slice(0,300)+'\n\n去动态看看?'))location.href='/moments.html';
+}
+// ═══ 念给你听: 他的声音(复用 /api/tts,默认关,省额度) ═══
+let stVoice=localStorage.getItem('bunny_story_voice')==='1',stCurVoice=null;
+function stVoiceApply(){
+  document.getElementById('stVoiceBtn').classList.toggle('on',stVoice);
+  document.getElementById('stVoiceBtn').textContent=stVoice?'🔈 念着':'🔈';
+  document.getElementById('stLog').classList.toggle('voice',stVoice);
+}
+function stVoiceToggle(){
+  stVoice=!stVoice;localStorage.setItem('bunny_story_voice',stVoice?'1':'0');stVoiceApply();
+  if(!stVoice&&stCurVoice)stCurVoice.stop();
+}
+function stSplitTTS(text){ // 中文标点断句,每段 ~120 字,服务端 400 字封顶
+  const parts=String(text||'').replace(/\s+/g,' ').split(/(?<=[。!?;…!?;])|(?<=[.!?])\s+/);
+  const chunks=[];let cur='';
+  for(const p of parts){if(!p)continue;if(cur&&(cur+p).length>120){chunks.push(cur);cur=p}else cur+=(cur?' ':'')+p}
+  if(cur.trim())chunks.push(cur);
+  const out=[];
+  for(let c of chunks.map(x=>x.trim()).filter(Boolean)){while(c.length>160){out.push(c.slice(0,120));c=c.slice(120)}out.push(c)}
+  return out;
+}
+async function stSpeak(btn,text){
+  if(stCurVoice){const same=stCurVoice.btn===btn;stCurVoice.stop();stCurVoice=null;if(same)return}
+  if(!text)return;
+  btn._blobs=btn._blobs||{}; // 合成过的缓存住,重播不再扣额度
+  let stopped=false,audio=null;
+  stCurVoice={btn,stop(){stopped=true;if(audio)try{audio.pause()}catch(e){};btn.classList.remove('playing');btn.textContent='念这段'}};
+  btn.classList.add('playing');btn.textContent='念着…';
+  for(const c of stSplitTTS(text)){
+    if(stopped)break;
+    let blob=btn._blobs[c];
+    if(!blob){
+      const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:c})}).catch(()=>null);
+      if(!r||!r.ok){stCurVoice.stop();stCurVoice=null;btn.textContent='声音没配好';setTimeout(()=>btn.textContent='念这段',2000);return}
+      blob=await r.blob();btn._blobs[c]=blob;
+    }
+    if(stopped)break;
+    await new Promise(res=>{audio=new Audio(URL.createObjectURL(blob));audio.onended=res;audio.onerror=res;audio.play().catch(res)});
+  }
+  if(stCurVoice&&stCurVoice.btn===btn){stCurVoice.stop();stCurVoice=null}
+}
+stVoiceApply();
+async function stShelve(){
+  if(!stCur||stBusy||!stCur.novel)return;
+  if(!confirm('把这篇放上书房的书架?你们就能在书房一起读,他也能在上面留批注'))return;
+  stBusy=true;
+  const r=await stPost('/api/stories/'+stCur.id+'/shelve',{});
+  stBusy=false;
+  if(!r.ok||!r.d||!r.d.book){alert((r.d&&r.d.error)||'没放上去…');return}
+  if(confirm('《'+r.d.book.title+'》放上书架了。去书房看看?'))go('book');
 }
 (function(){
   const inp=document.getElementById('stChat');

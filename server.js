@@ -1115,8 +1115,11 @@ const STORY_WORLDS = {
   ship: { name: '星尘号', blurb: '漂流的小飞船,只剩两个人和一只猫', seed: '软科幻。一艘小型运输船脱离航线漂流在星海里,船上只有她、一位驾驶员和一只橘猫,氧气还够二十天。仪表上忽然出现一个未知信号。基调: 安静、辽阔、彼此依靠,有惊险但不绝望。' },
   shanghai: { name: '旧上海一九三四', blurb: '百乐门后台的失踪案', seed: '民国侦探。1934 年上海,她是报馆的年轻记者,受托调查百乐门一位红舞女失踪的事。线索从一枚珍珠耳环开始。基调: 复古、机锋、人物有血有肉,谜案要有反转。' },
   forest: { name: '月亮的碎片', blurb: '会说话的狐狸带路,去找掉下来的月亮', seed: '童话。某天夜里月亮少了一块,一只会说话的狐狸敲开她的窗,说碎片掉进了森林深处,需要一个人类帮忙捡回去。基调: 轻盈、可爱、有点小哲思,像睡前故事。' },
-  florist: { name: '末日花店', blurb: '世界结束前一周,还开着的一家花店', seed: '温柔末日。人类知道一周后世界会结束,大多数店都关了,只有街角一家花店还开着,她走了进去。基调: 克制、动人、关于告别和想留下的东西,不煽情。' }
+  florist: { name: '末日花店', blurb: '世界结束前一周,还开着的一家花店', seed: '温柔末日。人类知道一周后世界会结束,大多数店都关了,只有街角一家花店还开着,她走了进去。基调: 克制、动人、关于告别和想留下的东西,不煽情。' },
+  us: { name: '我们的日子', blurb: '以你们真实的过往为底,讲一个只属于你们的故事(他会去记忆河里翻)', seed: '以你们真实的日子为底的故事: 主角就是嘉嘉和你,可以直呼名字,可以用真实的地方、真实发生过的事做起点 —— 然后往前走一步,走进一个没发生过、但像是你们会经历的日子里(平行世界也行)。把下面记忆河里捞出的真实过往自然地织进去,别复述、别念档案,像回忆一样带出来。基调: 亲、暖、有你们自己的梗,不必戏剧化。' }
 };
+const STORY_US = '我们的日子';
+const storyIsUs = s => s && s.world_name === STORY_US;
 const STORY_MODES = { adventure: '冒险', relay: '接龙' };
 async function storyMoodSec() {
   const m = await xinchaoMood().catch(() => '');
@@ -1141,7 +1144,9 @@ function storySys(moodSec, s, kind) {
     p += ': 故事接龙 —— 她写一段,你接一段,合写一个故事。她写的就是故事的一部分,顺着她的走向接,不要改写、不要否定,可以带出新的人物和转折。'
       + '用第三人称叙述(她的段落用了别的人称就跟着她),现在时。';
   } else {
-    p += ': 你是说书人,她是故事的主角。用第二人称"你"写她的经历,现在时,像在她耳边讲故事;不要用"嘉嘉"称呼故事里的她。'
+    p += storyIsUs(s)
+      ? ': 你是说书人,故事的主角是她和你自己。用第二人称"你"写她的经历,现在时,像在她耳边讲故事;这是你们自己的故事,可以直呼名字,你在故事里就是你。'
+      : ': 你是说书人,她是故事的主角。用第二人称"你"写她的经历,现在时,像在她耳边讲故事;不要用"嘉嘉"称呼故事里的她。'
       + '你可以把自己写进故事当一个角色(不必每次都出现),但说书人的口吻始终是你。';
   }
   p += '\n【开局】' + s.world;
@@ -1221,7 +1226,18 @@ app.post('/api/stories', async (req, res) => {
     const custom = String(req.body.custom || '').trim().slice(0, 600);
     const mode = STORY_MODES[req.body.mode] ? String(req.body.mode) : 'adventure';
     let worldName = '', world = '';
-    if (STORY_WORLDS[key]) { worldName = STORY_WORLDS[key].name; world = STORY_WORLDS[key].seed; }
+    if (STORY_WORLDS[key]) {
+      worldName = STORY_WORLDS[key].name; world = STORY_WORLDS[key].seed;
+      if (key === 'us') { // 去记忆河里捞你们的过往,直接钉进开局(以后每回合都带着)
+        if (custom) world += '\n她想从这里讲起: ' + custom;
+        const [mem, anchors] = await Promise.all([
+          ombreRecall(custom || '嘉嘉 小克 一起 日子 回忆', 6).catch(() => ''),
+          ombreAnchors().catch(() => '')
+        ]);
+        const past = [anchors, mem].filter(Boolean).join('\n');
+        world += past ? '\n【你们真实的过往(记忆河里捞的)】\n' + past.slice(0, 2400) : '\n(记忆河此刻不在线 —— 就凭你记得的讲。)';
+      }
+    }
     else if (custom) { worldName = custom.slice(0, 12); world = '她自己定的开局: ' + custom; }
     else { worldName = '他随口编的'; world = '她说"随便,你编一个"。你自己定一个世界和开头 —— 挑一个你此刻想讲给她听的故事,别落俗套,别选太黑暗的。'; }
     const s = { mode, world, memo: '', items: [], state: '' };
@@ -1283,7 +1299,11 @@ app.post('/api/stories/:id/turn', async (req, res) => {
       ask = '【她这一步】' + action;
     }
     const hint = storyRollHint(roll);
-    const user = '【最近几回合】\n' + storyRecent(log, 6, relay) + '\n\n' + ask + (hint ? '\n' + hint : '') + '\n\n接着' + (relay ? '写' : '讲') + '。';
+    // 「我们的日子」: 她这一步让他想起的真实片段,顺手带进这回合
+    const flash = storyIsUs(s) && action && !auto ? await ombreRecall(action, 3).catch(() => '') : '';
+    const user = '【最近几回合】\n' + storyRecent(log, 6, relay) + '\n\n' + ask + (hint ? '\n' + hint : '')
+      + (flash ? '\n【她这一步让你想起的真实片段】\n' + flash + '\n(想用就自然地带进去,不想用就放着。)' : '')
+      + '\n\n接着' + (relay ? '写' : '讲') + '。';
     const raw = await gameLLM(sys, user, 1100, 0.95);
     const t = storyParse(raw);
     if (!t || !t.text) return res.status(502).json({ error: '他卡壳了……再说一遍?' });
@@ -1394,6 +1414,23 @@ app.post('/api/stories/:id/share', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     await storySave(id, { shared_at: new Date().toISOString() });
     res.json({ ok: true, moment: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 放上书架: 整理好的短篇存进书房的 books 表,你们能在书房一起读、他能在上面留批注
+app.post('/api/stories/:id/shelve', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const s = await storyLoad(id);
+    if (!s) return res.status(404).json({ error: '没有这个故事' });
+    const novel = String(s.novel || '').trim();
+    if (!novel) return res.status(400).json({ error: '先「整理成一篇」,再放上书架' });
+    const firstLine = novel.split('\n')[0].trim();
+    const title = ((firstLine.length <= 20 && firstLine) || s.title).replace(/^[《「]|[》」]$/g, '');
+    const { data, error } = await supabase.from('books')
+      .insert({ title, content: novel, len: novel.length }).select('id,title').single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, book: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
