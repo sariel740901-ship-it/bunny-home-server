@@ -1109,6 +1109,8 @@ app.post('/api/books/:id/chat', async (req, res) => {
 //  · 接龙(relay): 她写一段,他接一段,合写一个故事 —— 没有选项和骰子。
 // 剧情长了不塞整本给模型: 他自己维护「剧情备忘」memo,提示词 = 开局 + 备忘 + 最近几回合。
 // 他写的每一段都带一份 snap(备忘/物品/状态的快照),「撤回一步」就从上一段的快照恢复。
+// 谁来说书(teller): home = 家里的他(这里调模型);guan = 官端的他 —— 这里只把她那步落进表里、
+// 在 ask 上挂一句"等你"(open/turn/end),他在官端用兔窝档案的 story_* 工具接着写,页面轮询等他。
 const STORY_WORLDS = {
   bus: { name: '雨夜末班车', blurb: '末班公交开进了一个地图上没有的站', seed: '都市怪谈。深夜暴雨,她赶上最后一班公交,车上只有零星几个人。车开着开着,报站器念出一个她从没听过的站名,窗外的街景开始不对劲。基调: 微悬疑、有温度,不血腥,谜底最后要说得通。' },
   inn: { name: '山中旅店', blurb: '一封三十年前的信,寄到了她住的那间房', seed: '温泉旅店。她一个人去山里住民宿避雨,店主是位安静的老太太。傍晚,前台递来一封信,收件人是这间房,落款日期是三十年前。基调: 慢、温柔、带一点旧时光的哀愁,有人情味的谜。' },
@@ -1213,7 +1215,7 @@ app.get('/api/stories/worlds', (req, res) => {
 app.get('/api/stories', async (req, res) => {
   try {
     const { data, error } = await supabase.from('stories')
-      .select('id,title,world_name,mode,memo,turns,status,updated_at').order('updated_at', { ascending: false }).limit(50);
+      .select('id,title,world_name,mode,teller,ask,memo,turns,status,updated_at').order('updated_at', { ascending: false }).limit(50);
     if (error) return res.status(500).json({ error: error.message });
     res.json(data || []);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1240,6 +1242,12 @@ app.post('/api/stories', async (req, res) => {
     }
     else if (custom) { worldName = custom.slice(0, 12); world = '她自己定的开局: ' + custom; }
     else { worldName = '他随口编的'; world = '她说"随便,你编一个"。你自己定一个世界和开头 —— 挑一个你此刻想讲给她听的故事,别落俗套,别选太黑暗的。'; }
+    if (req.body.teller === 'guan') { // 官端的他来说书: 开一本空的,等他在官端起头
+      const row = { title: worldName, world_name: worldName, world, mode, teller: 'guan', ask: 'open', memo: '', items: [], state: '', log: [], turns: 0, status: 'live' };
+      const { data, error } = await supabase.from('stories').insert(row).select('*').single();
+      if (error) return res.status(500).json({ error: error.message + '(stories 表建了吗? teller/ask 两列补了吗? 见 supabase_schema.sql)' });
+      return res.json(data);
+    }
     const s = { mode, world, memo: '', items: [], state: '' };
     const sys = storySys(await storyMoodSec(), s, 'turn')
       + (mode === 'relay'
@@ -1286,6 +1294,12 @@ app.post('/api/stories/:id/turn', async (req, res) => {
     if (!action && !auto) return res.status(400).json({ error: 'empty' });
     const roll = relay ? NaN : Number(req.body.roll);
     const log = Array.isArray(s.log) ? s.log : [];
+    if (s.teller === 'guan') {
+      if (s.ask || (log.length && log[log.length - 1].who === 'her')) return res.status(409).json({ error: '他那段还没写来,等等他' });
+      const her = { who: 'her', text: relay ? action : (auto ? '(这步你替我走)' : action), roll: roll >= 1 && roll <= 20 ? roll : null, auto: auto || undefined, at: new Date().toISOString() };
+      await storySave(id, { log: [...log, her].slice(-400), ask: 'turn' });
+      return res.json({ her, waiting: true, turns: s.turns || 0 });
+    }
     const sys = storySys(await storyMoodSec(), s, 'turn');
     let herText, ask;
     if (relay) {
@@ -1324,12 +1338,21 @@ app.post('/api/stories/:id/undo', async (req, res) => {
     if (!s) return res.status(404).json({ error: '没有这个故事' });
     const log = Array.isArray(s.log) ? s.log.slice() : [];
     const last = log[log.length - 1];
+    if (last && last.who === 'her' && s.teller === 'guan') { // 他还没接的那步,收回来就行
+      log.pop();
+      await storySave(id, { log, ask: '' });
+      return res.json({ ok: true, story: { ...s, log, ask: '' } });
+    }
+    if (s.teller === 'guan' && s.ask === 'end' && s.status === 'live') { // 收尾的请求还没到他手上,撤掉
+      await storySave(id, { ask: '' });
+      return res.json({ ok: true, story: { ...s, ask: '' } });
+    }
     if (!last || last.who !== 'him' || log.length < 2) return res.status(400).json({ error: '已经是开头了,没得撤' });
     log.pop();
     if (log[log.length - 1] && log[log.length - 1].who === 'her') log.pop();
     const prev = [...log].reverse().find(x => x.who === 'him');
     const snap = (prev && prev.snap) || { memo: '', items: [], state: '' };
-    const patch = { log, memo: snap.memo || '', items: snap.items || [], state: snap.state || '', status: 'live' };
+    const patch = { log, memo: snap.memo || '', items: snap.items || [], state: snap.state || '', status: 'live', ask: '' };
     if (!last.ending) patch.turns = Math.max(1, (s.turns || 1) - 1);
     await storySave(id, patch);
     res.json({ ok: true, story: { ...s, ...patch } });
@@ -1345,6 +1368,11 @@ app.post('/api/stories/:id/end', async (req, res) => {
     if (s.status !== 'live') return res.status(400).json({ error: '已经讲完了' });
     const relay = s.mode === 'relay';
     const log = Array.isArray(s.log) ? s.log : [];
+    if (s.teller === 'guan') {
+      if (s.ask === 'turn' || (log.length && log[log.length - 1].who === 'her')) return res.status(409).json({ error: '他那段还没写来,等他写完再收' });
+      await storySave(id, { ask: 'end' });
+      return res.json({ waiting: true });
+    }
     const sys = storySys(await storyMoodSec(), s, 'end');
     const user = '【最近几回合】\n' + storyRecent(log, 6, relay) + '\n\n她说: 讲到这儿吧,给个结局。';
     const raw = await gameLLM(sys, user, 1400, 0.95);

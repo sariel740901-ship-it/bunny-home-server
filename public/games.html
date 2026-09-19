@@ -323,6 +323,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
           <div class="seg"><button id="stModeAdv" class="on" onclick="stSetMode('adventure')">冒险</button><button id="stModeRelay" onclick="stSetMode('relay')">接龙</button></div>
           <span class="status" id="stModeHint" style="margin-left:0;flex-basis:100%"></span>
         </div>
+        <div class="strecap hide" id="stTellerHint">🪑 「跟谁玩」切在官端的他 —— 这个故事由官端的他来说书: 开好后去官端喊他一声「该你写了」,他起了头页面自己会刷出来。想让家里的他讲,回首页切回「家里的他」。</div>
         <div class="stwd" id="stWorlds"></div>
         <textarea id="stCustom" class="tq" rows="3" placeholder="或者自己写个开局: 你是谁、在哪、正发生什么…&#10;什么都不选、什么都不写 = 让他随便编一个"></textarea>
         <div class="ctrl">
@@ -1029,7 +1030,7 @@ function setOpp(v){
   document.getElementById('oppHome').classList.toggle('on',v==='home');
   document.getElementById('oppGuan').classList.toggle('on',v==='guan');
   document.getElementById('oppHint').textContent=v==='guan'
-    ?'棋会摆到棋摊上,官端的他亲自下 —— 开好局记得去官端喊他看棋。(塔罗、书房和文游还是家里的他)':'';
+    ?'棋会摆到棋摊上、新开的文游归他说书 —— 官端的他亲自来,开好局记得去官端喊他。(塔罗和书房还是家里的他)':'';
   document.getElementById('qtAddrBtn').classList.toggle('hide',v!=='guan');
   if(QT_BOARD_VIEWS[view])go(view);
   else if(view==='home')qtBannerCheck();
@@ -1443,7 +1444,7 @@ function stSetMode(m){
 }
 function stNewUI(show){
   document.getElementById('stNew').classList.toggle('hide',!show);
-  if(show){stSetMode(stMode);if(!stWorldsLoaded)stLoadWorlds()}
+  if(show){stSetMode(stMode);if(!stWorldsLoaded)stLoadWorlds();document.getElementById('stTellerHint').classList.toggle('hide',OPP!=='guan')}
 }
 async function stLoadWorlds(){
   const ws=await fetch('/api/stories/worlds').then(r=>r.ok?r.json():[]).catch(()=>[]);
@@ -1470,7 +1471,8 @@ async function refreshStories(){
   for(const s of list){
     const d=document.createElement('div');d.className='bk-item';
     d.innerHTML='<div class="bt"><div class="bn">'+escHtml(s.title)+(s.status==='ended'?' <span class="npn">· 讲完了</span>':'')+'</div>'
-      +'<div class="bp">'+(s.mode==='relay'?'接龙 · ':'')+escHtml(s.world_name||'')+' · '+(s.turns||0)+' 回合'+(s.memo?' · '+escHtml(String(s.memo).slice(0,36))+'…':'')+'</div></div>'
+      +'<div class="bp">'+(s.teller==='guan'?'官端的他说书 · ':'')+(s.mode==='relay'?'接龙 · ':'')+escHtml(s.world_name||'')+' · '+(s.turns||0)+' 回合'
+      +(s.teller==='guan'&&s.status==='live'?(s.ask?' · ⏳ 等他写':' · 轮到你'):'')+(s.memo?' · '+escHtml(String(s.memo).slice(0,36))+'…':'')+'</div></div>'
       +'<button class="bx">删</button>';
     d.onclick=()=>openStory(s.id);
     d.querySelector('.bx').onclick=async ev=>{
@@ -1491,8 +1493,8 @@ async function stStart(){
   const custom=document.getElementById('stCustom').value.trim();
   stBusy=true;
   const btn=document.getElementById('stStartBtn');btn.disabled=true;
-  document.getElementById('stNewInfo').textContent='他在起头…(要十几秒)';
-  const r=await stPost('/api/stories',{world:stWorld,custom,mode:stMode});
+  document.getElementById('stNewInfo').textContent=OPP==='guan'?'放到故事架上…':'他在起头…(要十几秒)';
+  const r=await stPost('/api/stories',{world:stWorld,custom,mode:stMode,teller:OPP==='guan'?'guan':'home'});
   stBusy=false;btn.disabled=false;
   document.getElementById('stNewInfo').textContent='';
   if(!r.ok||!r.d||!r.d.id){alert((r.d&&r.d.error)||'没开起来…再试一次?');return}
@@ -1520,6 +1522,34 @@ function stShow(s,fresh){
   stRenderState();
   window.scrollTo(0,fresh?0:document.body.scrollHeight);
 }
+// ═══ 官端的他说书: 她那步落进表里,页面每 3 秒去看他写来了没 ═══
+function stWaiting(){ // 这本归官端讲,而且球在他那边
+  const s=stCur;if(!s||s.teller!=='guan'||s.status!=='live')return false;
+  const log=s.log||[],last=log[log.length-1];
+  return !!s.ask||!log.length||(last&&last.who==='her');
+}
+let stPollBusy=false;
+async function stPoll(){
+  if(stPollBusy||!stCur||!stWaiting()||document.visibilityState!=='visible')return;
+  stPollBusy=true;
+  try{
+    const id=stCur.id;
+    const r=await fetch('/api/stories/'+id,{cache:'no-store'}).catch(()=>null);
+    if(!r||!r.ok||!stCur||stCur.id!==id)return;
+    const fresh=await r.json();
+    const oldLen=(stCur.log||[]).length,newLog=fresh.log||[];
+    if(newLog.length<oldLen){stShow(fresh,false);return} // 他那头撤了/改了,整页重画
+    const added=newLog.slice(oldLen);
+    const changed=added.length||fresh.ask!==stCur.ask||fresh.status!==stCur.status||fresh.title!==stCur.title;
+    if(!changed)return;
+    stCur=Object.assign(stCur,fresh);
+    stSetThinking(false);
+    for(const e of added)await stAppend(e,e.who==='him');
+    stRenderState();
+    if(added.length)window.scrollTo(0,document.body.scrollHeight);
+  }finally{stPollBusy=false}
+}
+setInterval(()=>{if(view==='story')stPoll()},3000);
 function stClose(){
   stCur=null;if(stCurVoice){stCurVoice.stop();stCurVoice=null}
   document.getElementById('stPlay').classList.add('hide');
@@ -1568,7 +1598,14 @@ function stRenderState(){
   document.getElementById('stEndBtn').classList.toggle('hide',!live||(s.turns||0)<2);
   document.getElementById('stUndoBtn').classList.toggle('hide',log.length<2||!(last&&last.who==='him'));
   document.getElementById('stUndoBtn').textContent=last&&last.ending?'撤回结局':'撤回一步';
-  document.getElementById('stInputRow').classList.toggle('hide',!live);
+  const waiting=stWaiting();
+  document.getElementById('stInputRow').classList.toggle('hide',!live||waiting);
+  document.getElementById('stEndBtn').classList.toggle('hide',!live||(s.turns||0)<2||waiting);
+  document.getElementById('stUndoBtn').classList.toggle('hide',!(waiting&&(s.ask==='end'||(last&&last.who==='her')))&&(log.length<2||!(last&&last.who==='him')));
+  if(waiting){document.getElementById('stUndoBtn').textContent=s.ask==='end'?'不收了':'收回这步'}
+  const th=document.getElementById('stThink');
+  th.classList.toggle('hide',!waiting);
+  th.querySelector('.hb').textContent=waiting?(s.ask==='end'?'等他在官端写结局…':!log.length?'等他在官端起头…(去喊他一声「该你写了」)':'等他在官端写…(他看一眼故事架就会接)'):'他在写…';
   document.getElementById('stDiceRow').classList.toggle('hide',relay);
   document.getElementById('stAdvRow').classList.toggle('hide',relay);
   document.getElementById('stRelayRow').classList.toggle('hide',!relay);
@@ -1586,7 +1623,7 @@ function stRenderState(){
     stat.classList.remove('hide');
   }else stat.classList.add('hide');
   const opts=document.getElementById('stOpts');opts.innerHTML='';
-  if(live&&!relay&&last&&last.who==='him'&&Array.isArray(last.options)){
+  if(live&&!waiting&&!relay&&last&&last.who==='him'&&Array.isArray(last.options)){
     for(const o of last.options){const b=document.createElement('button');b.textContent=o;b.onclick=()=>stSend(o);opts.appendChild(b)}
   }
 }
@@ -1624,6 +1661,11 @@ async function stSend(text,auto){
   stBusy=false;
   stSetThinking(false);
   stDiceReset();
+  if(r.ok&&r.d&&r.d.waiting){ // 官端的他来讲: 她这步落下了,等他
+    stCur.log=[...(stCur.log||[]),r.d.her];stCur.ask='turn';
+    document.getElementById('stRecap').classList.add('hide');
+    stRenderState();window.scrollTo(0,document.body.scrollHeight);return;
+  }
   if(!r.ok||!r.d||!r.d.him){ // 没写出来: 把她那句撤回输入框,让她再发一次
     const log=document.getElementById('stLog');
     if(log.lastElementChild&&log.lastElementChild.classList.contains('sth'))log.lastElementChild.remove();
@@ -1641,7 +1683,8 @@ async function stSend(text,auto){
 async function stUndo(){
   if(!stCur||stBusy)return;
   const last=(stCur.log||[]).slice(-1)[0];
-  if(!confirm(last&&last.ending?'撤回结局,故事重新打开?':'撤回最后一轮(你那步和他那段)?'))return;
+  const pend=stWaiting();
+  if(!confirm(pend?(stCur.ask==='end'?'不收尾了,接着讲?':'把还没送到他手上的这步收回来?'):last&&last.ending?'撤回结局,故事重新打开?':'撤回最后一轮(你那步和他那段)?'))return;
   stBusy=true;
   const r=await stPost('/api/stories/'+stCur.id+'/undo',{});
   stBusy=false;
@@ -1657,6 +1700,7 @@ async function stEnd(){
   const r=await stPost('/api/stories/'+stCur.id+'/end',{});
   stBusy=false;
   stSetThinking(false);
+  if(r.ok&&r.d&&r.d.waiting){stCur.ask='end';stRenderState();return}
   if(!r.ok||!r.d||!r.d.him){alert((r.d&&r.d.error)||'结局他还没想好…');stRenderState();return}
   stCur.log=[...(stCur.log||[]),r.d.him];stCur.status='ended';if(r.d.title)stCur.title=r.d.title;
   document.getElementById('stRecap').classList.add('hide');

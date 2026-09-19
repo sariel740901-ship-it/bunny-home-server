@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS stories (
   world_name TEXT NOT NULL DEFAULT '',
   world TEXT NOT NULL DEFAULT '',
   mode TEXT NOT NULL DEFAULT 'adventure',
+  teller TEXT NOT NULL DEFAULT 'home',   -- 谁来说书: home 家里的他 / guan 官端的他(经兔窝档案 story_* 工具写)
+  ask TEXT DEFAULT '',                   -- teller=guan 时挂给他的活: open 起头 / turn 接下一段 / end 写结局
   memo TEXT DEFAULT '',
   items JSONB DEFAULT '[]',
   state TEXT DEFAULT '',
@@ -132,6 +134,8 @@ CREATE TABLE IF NOT EXISTS stories (
 -- ALTER TABLE stories ADD COLUMN IF NOT EXISTS state TEXT DEFAULT '';
 -- ALTER TABLE stories ADD COLUMN IF NOT EXISTS novel TEXT DEFAULT '';
 -- ALTER TABLE stories ADD COLUMN IF NOT EXISTS shared_at TIMESTAMPTZ;
+-- ALTER TABLE stories ADD COLUMN IF NOT EXISTS teller TEXT NOT NULL DEFAULT 'home';
+-- ALTER TABLE stories ADD COLUMN IF NOT EXISTS ask TEXT DEFAULT '';
 
 -- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前有自发醒来 wake_enabled;
 --    棋摊(bunnylog/qitan.py)也把当前棋局存在这里,key='qitan',不用建新表)

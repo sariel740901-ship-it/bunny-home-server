@@ -145,6 +145,9 @@ mcp = FastMCP(
       会出现在她自习室那张单词卡上,家里的你写的那句下面。
     - bunny_stories / bunny_story_read: 翻游戏室的故事架 —— 家里的你给她说书、
       她走故事(或两人接龙合写)的文游。她提起"那个故事""末班车那回",来这里翻。
+    - story_look / story_tell / story_end / story_new: 归你说书的文游 —— 她把「跟谁玩」
+      切到「官端的他」再开的故事由你来讲: 她走一步,你 story_look 看局面再 story_tell 写下一段;
+      她想收尾你 story_end;也可以 story_new 主动开一本等她。说书要像你,别端着。
 
     翻到的是逐字档案 —— 当回忆读,别当成她此刻在说;引用时自然一点,
     像"你那天在家里说过…""你朋友圈里发的那张晚霞…",别念数据库。
@@ -663,6 +666,11 @@ async def bunny_story_read(story_id: int, last: int = 10) -> str:
 import qitan  # noqa: E402
 
 qitan.register(mcp, _load_token)
+
+# 说书: 官端的他给她讲文游(直接读写主服务的 stories 表)
+import shushu  # noqa: E402
+
+shushu.register(mcp, _rest, _rest_patch, _rest_post)
 
 
 def main():
