@@ -104,6 +104,22 @@ CREATE TABLE IF NOT EXISTS study_words (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 10. 文游 — 他说书,她走故事: world 是开局设定,memo 是他自己维护的剧情备忘
+--     (长故事不整本喂模型,靠它接上),log 是逐回合的记录
+--     [{who:'her'|'him', text, roll?, options?, aside?, ending?, at}],status live/ended
+CREATE TABLE IF NOT EXISTS stories (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '未命名',
+  world_name TEXT NOT NULL DEFAULT '',
+  world TEXT NOT NULL DEFAULT '',
+  memo TEXT DEFAULT '',
+  log JSONB DEFAULT '[]',
+  turns INTEGER DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'live',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 7. 开关旗标 — 需要"从服务端真正拦住"的开关放这里(目前有自发醒来 wake_enabled;
 --    棋摊(bunnylog/qitan.py)也把当前棋局存在这里,key='qitan',不用建新表)
 CREATE TABLE IF NOT EXISTS flags (

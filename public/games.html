@@ -152,6 +152,25 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .tcap{text-align:center;font-size:10.5px;color:var(--muted);margin-top:7px;letter-spacing:.5px;line-height:1.5;opacity:0;transition:opacity .4s}
 .tcard.flip .tcap{opacity:1}
 .reading{font-family:var(--serif);font-size:14.5px;line-height:1.9;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin-top:14px;white-space:pre-wrap;animation:fadeUp .35s ease both}
+/* 文游 */
+.stwd{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.stwd .wcard{background:var(--card);border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);padding:12px 12px;cursor:pointer;transition:transform .15s}
+.stwd .wcard:active{transform:scale(.97)}
+.stwd .wcard.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(217,119,87,.18)}
+.stwd .wn{font-family:var(--serif);font-size:14.5px;font-weight:500}
+.stwd .wb{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.55}
+.stlog{display:flex;flex-direction:column;gap:11px;margin-bottom:12px}
+.stp{background:color-mix(in srgb,var(--card) 88%,#e8dcc0);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:15px 16px;font-family:var(--serif);font-size:14.5px;line-height:1.95;white-space:pre-wrap;word-break:break-word;animation:fadeUp .3s ease both}
+@media(prefers-color-scheme:dark){.stp{background:color-mix(in srgb,var(--card) 92%,#4a4234)}}
+.stp.ending{border-color:var(--accent)}
+.sta{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--muted);line-height:1.7;padding:0 2px;white-space:pre-wrap}
+.sta::before{content:'🐰';font-size:14px;flex-shrink:0}
+.sth{align-self:flex-end;max-width:86%;background:var(--accent);color:#fff;border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13.5px;line-height:1.65;word-break:break-word;white-space:pre-wrap}
+.sth .roll{display:inline-block;font-size:11px;opacity:.9;margin-left:6px;background:rgba(255,255,255,.2);border-radius:6px;padding:0 5px;white-space:nowrap}
+.stopts{display:flex;flex-direction:column;gap:7px;margin-bottom:10px}
+.stopts button{text-align:left;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:9px 12px;font-size:13.5px;font-family:inherit;cursor:pointer;box-shadow:var(--shadow);line-height:1.5}
+.stopts button:active{transform:scale(.98)}
+.stopts button::before{content:'→ ';color:var(--accent)}
 .hide{display:none !important}
 body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
@@ -185,6 +204,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="gcard" onclick="go('xiangqi')"><svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M7.6 9.6h8.8M8.6 14.6h6.8M12 6.6v3"/></svg><div><div class="gt">象棋</div><div class="gd">楚河汉界 —— 他有个看棋的小脑袋,别指望他让你</div></div></div>
     <div class="gcard" onclick="go('go')"><svg class="gi" viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16M8 4v16M12 4v16M16 4v16"/><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="2.2"/></svg><div><div class="gt">围棋</div><div class="gd">九路小棋盘起步,提子、打劫、数目都有 —— 他下得不算好,但会认真</div></div></div>
     <div class="gcard" onclick="go('book')"><svg class="gi" viewBox="0 0 24 24"><path d="M12 6C10.4 4.4 8.4 3.8 4 3.8v14.7c4.4 0 6.4.6 8 2.2 1.6-1.6 3.6-2.2 8-2.2V3.8c-4.4 0-6.4.6-8 2.2z"/><path d="M12 6v14.7"/></svg><div><div class="gt">书房</div><div class="gd">一起读一本书 —— 你翻到哪页,他看的就是哪页</div></div></div>
+    <div class="gcard" onclick="go('story')"><svg class="gi" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4"/></svg><div><div class="gt">文游</div><div class="gd">他说书,你走故事 —— 挑个开局,每一步都你说了算,骰子决定顺不顺</div></div></div>
     <div class="gcard" onclick="location.href='/study.html'"><svg class="gi" viewBox="0 0 24 24"><path d="M12 4L3 8l9 4 9-4z"/><path d="M6.5 9.8V15c0 1.5 2.5 2.8 5.5 2.8s5.5-1.3 5.5-2.8V9.8"/><path d="M21 8v5"/></svg><div><div class="gt">自习室</div><div class="gd">和他一起学外语 —— 每天五个词,他陪你背、陪你默、陪你说</div></div></div>
   </div>
 
@@ -278,6 +298,33 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     </div>
   </div>
 
+  <!-- 文游 -->
+  <div id="vStory" class="hide">
+    <div id="stShelf">
+      <div class="ctrl"><button class="pill accent" onclick="stNewUI(true)">＋ 开一个新故事</button></div>
+      <div id="stNew" class="bookadd hide">
+        <div class="stwd" id="stWorlds"></div>
+        <textarea id="stCustom" class="tq" rows="3" placeholder="或者自己写个开局: 你是谁、在哪、正发生什么…&#10;什么都不选、什么都不写 = 让他随便编一个"></textarea>
+        <div class="ctrl">
+          <span class="status" id="stNewInfo" style="margin-left:0"></span>
+          <button class="pill" style="margin-left:auto" onclick="stNewUI(false)">取消</button>
+          <button class="pill accent" id="stStartBtn" onclick="stStart()">开讲</button>
+        </div>
+      </div>
+      <div id="stList"><div class="emptyb">还没有故事 —— 开一个,让他讲给你听</div></div>
+    </div>
+    <div id="stPlay" class="hide">
+      <div class="ctrl"><button class="pill" onclick="stClose()">故事架</button><span class="status" id="stInfo"></span><button class="pill hide" id="stEndBtn" onclick="stEnd()">收个尾</button></div>
+      <div class="stlog" id="stLog"></div>
+      <div class="him hide" id="stThink" style="margin:0 0 10px"><div class="av">🐰</div><div class="hb thinking">他在写…</div></div>
+      <div class="stopts" id="stOpts"></div>
+      <div id="stInputRow">
+        <div class="ctrl" style="margin-bottom:8px"><button class="pill" id="stDice" onclick="stRoll()">🎲 掷骰</button><span class="status" id="stDiceHint" style="margin-left:0">不掷的话,发送时替你掷</span></div>
+        <div class="chatrow"><input id="stChat" placeholder="你要做什么?(也可以点上面的路)" maxlength="300"><button class="pill" id="stChatBtn">发送</button></div>
+      </div>
+    </div>
+  </div>
+
   <!-- 塔罗 -->
   <div id="vTarot" class="hide">
     <div class="ctrl">
@@ -329,8 +376,8 @@ async function api(payload){
 }
 
 // ═══ 路由 ═══
-const VIEWS={home:'vHome',ttt:'vTtt',gomoku:'vGmk',xiangqi:'vXq',go:'vGo',tarot:'vTarot',book:'vBook'};
-const TITLES={home:'和他玩',ttt:'井字棋',gomoku:'五子棋',xiangqi:'象棋',go:'围棋',tarot:'塔罗牌',book:'书房'};
+const VIEWS={home:'vHome',ttt:'vTtt',gomoku:'vGmk',xiangqi:'vXq',go:'vGo',tarot:'vTarot',book:'vBook',story:'vStory'};
+const TITLES={home:'和他玩',ttt:'井字棋',gomoku:'五子棋',xiangqi:'象棋',go:'围棋',tarot:'塔罗牌',book:'书房',story:'文游'};
 let view='home';
 function go(v){
   view=v;
@@ -341,6 +388,7 @@ function go(v){
   if(v==='xiangqi'){OPP==='guan'?qtEnter('xiangqi'):xqReset(false)}
   if(v==='go'){OPP==='guan'?qtEnter('go'):goInit()}
   if(v==='book')refreshBooks();
+  if(v==='story'){if(!stCur)refreshStories()}
   if(v==='home')qtBannerCheck();
 }
 document.getElementById('backBtn').onclick=()=>{view==='home'?location.href='/':go('home')};
@@ -948,7 +996,7 @@ function setOpp(v){
   document.getElementById('oppHome').classList.toggle('on',v==='home');
   document.getElementById('oppGuan').classList.toggle('on',v==='guan');
   document.getElementById('oppHint').textContent=v==='guan'
-    ?'棋会摆到棋摊上,官端的他亲自下 —— 开好局记得去官端喊他看棋。(塔罗和书房还是家里的他)':'';
+    ?'棋会摆到棋摊上,官端的他亲自下 —— 开好局记得去官端喊他看棋。(塔罗、书房和文游还是家里的他)':'';
   document.getElementById('qtAddrBtn').classList.toggle('hide',v!=='guan');
   if(QT_BOARD_VIEWS[view])go(view);
   else if(view==='home')qtBannerCheck();
@@ -1347,6 +1395,181 @@ function turn(d){
   };
   btn.onclick=send;
   inp.onkeydown=e=>{if(e.key==='Enter')send()};
+})();
+
+// ═══ 文游: 他说书,你走故事 ═══
+// 故事存在服务端(stories 表),这里只管画: 他的段落像书页,你的行动是右侧气泡,
+// 骰子前端掷(1-20)跟着行动一起送过去,他按运气写顺不顺。
+let stCur=null,stWorld='',stBusy=false,stRollVal=0,stWorldsLoaded=false;
+function stNewUI(show){
+  document.getElementById('stNew').classList.toggle('hide',!show);
+  if(show&&!stWorldsLoaded)stLoadWorlds();
+}
+async function stLoadWorlds(){
+  const ws=await fetch('/api/stories/worlds').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  if(!Array.isArray(ws)||!ws.length)return;
+  stWorldsLoaded=true;
+  const host=document.getElementById('stWorlds');host.innerHTML='';
+  for(const w of ws){
+    const d=document.createElement('div');d.className='wcard'+(stWorld===w.key?' on':'');
+    d.innerHTML='<div class="wn">'+escHtml(w.name)+'</div><div class="wb">'+escHtml(w.blurb)+'</div>';
+    d.onclick=()=>{
+      stWorld=stWorld===w.key?'':w.key;
+      host.querySelectorAll('.wcard').forEach(x=>x.classList.remove('on'));
+      if(stWorld)d.classList.add('on');
+    };
+    host.appendChild(d);
+  }
+}
+async function refreshStories(){
+  const host=document.getElementById('stList');
+  const list=await fetch('/api/stories').then(r=>r.ok?r.json():null).catch(()=>null);
+  if(!Array.isArray(list)){host.innerHTML='<div class="emptyb">故事架没搭起来 — stories 表建了吗?(见 supabase_schema.sql)</div>';return}
+  if(!list.length){host.innerHTML='<div class="emptyb">还没有故事 —— 开一个,让他讲给你听</div>';return}
+  host.innerHTML='';
+  for(const s of list){
+    const d=document.createElement('div');d.className='bk-item';
+    d.innerHTML='<div class="bt"><div class="bn">'+escHtml(s.title)+(s.status==='ended'?' <span class="npn">· 讲完了</span>':'')+'</div>'
+      +'<div class="bp">'+escHtml(s.world_name||'')+' · '+(s.turns||0)+' 回合'+(s.memo?' · '+escHtml(String(s.memo).slice(0,36))+'…':'')+'</div></div>'
+      +'<button class="bx">删</button>';
+    d.onclick=()=>openStory(s.id);
+    d.querySelector('.bx').onclick=async ev=>{
+      ev.stopPropagation();
+      if(!confirm('把《'+s.title+'》从故事架上拿掉?拿掉就找不回来了'))return;
+      await fetch('/api/stories/'+s.id,{method:'DELETE'}).catch(()=>{});
+      refreshStories();
+    };
+    host.appendChild(d);
+  }
+}
+async function stPost(url,body){
+  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})})
+    .then(async x=>({ok:x.ok,d:await x.json().catch(()=>null)})).catch(()=>({ok:false,d:null}));
+}
+async function stStart(){
+  if(stBusy)return;
+  const custom=document.getElementById('stCustom').value.trim();
+  stBusy=true;
+  const btn=document.getElementById('stStartBtn');btn.disabled=true;
+  document.getElementById('stNewInfo').textContent='他在起头…(要十几秒)';
+  const r=await stPost('/api/stories',{world:stWorld,custom});
+  stBusy=false;btn.disabled=false;
+  document.getElementById('stNewInfo').textContent='';
+  if(!r.ok||!r.d||!r.d.id){alert((r.d&&r.d.error)||'没开起来…再试一次?');return}
+  document.getElementById('stCustom').value='';stWorld='';
+  stNewUI(false);
+  stShow(r.d);
+}
+async function openStory(id){
+  const r=await fetch('/api/stories/'+id).catch(()=>null);
+  if(!r||!r.ok)return;
+  stShow(await r.json());
+}
+function stShow(s){
+  stCur=s;stRollVal=0;stDiceReset();
+  document.getElementById('stShelf').classList.add('hide');
+  document.getElementById('stPlay').classList.remove('hide');
+  document.getElementById('stLog').innerHTML='';
+  for(const e of (s.log||[]))stAppend(e,false);
+  stRenderState();
+  window.scrollTo(0,document.body.scrollHeight);
+}
+function stClose(){
+  stCur=null;
+  document.getElementById('stPlay').classList.add('hide');
+  document.getElementById('stShelf').classList.remove('hide');
+  refreshStories();
+  window.scrollTo(0,0);
+}
+function stAppend(e,anim){
+  const host=document.getElementById('stLog');
+  if(!e)return;
+  if(e.who==='her'){
+    const d=document.createElement('div');d.className='sth';
+    d.innerHTML=escHtml(e.text)+(e.roll?'<span class="roll">🎲 '+Number(e.roll)+'</span>':'');
+    host.appendChild(d);
+  }else{
+    const d=document.createElement('div');d.className='stp'+(e.ending?' ending':'');
+    d.textContent=e.text||'';
+    if(!anim)d.style.animation='none';
+    host.appendChild(d);
+    if(e.aside){const a=document.createElement('div');a.className='sta';a.textContent=e.aside;host.appendChild(a)}
+  }
+}
+function stRenderState(){
+  const s=stCur;if(!s)return;
+  const live=s.status==='live';
+  const last=(s.log||[]).slice(-1)[0];
+  document.getElementById('stInfo').textContent='《'+s.title+'》 · 第 '+(s.turns||0)+' 回合'+(live?'':' · 讲完了');
+  document.getElementById('stEndBtn').classList.toggle('hide',!live||(s.turns||0)<2);
+  document.getElementById('stInputRow').classList.toggle('hide',!live);
+  const opts=document.getElementById('stOpts');opts.innerHTML='';
+  if(live&&last&&last.who==='him'&&Array.isArray(last.options)){
+    for(const o of last.options){const b=document.createElement('button');b.textContent=o;b.onclick=()=>stSend(o);opts.appendChild(b)}
+  }
+}
+function stDiceReset(){
+  document.getElementById('stDice').textContent='🎲 掷骰';
+  document.getElementById('stDiceHint').textContent='不掷的话,发送时替你掷';
+}
+function stRoll(){
+  if(stBusy||!stCur)return;
+  const btn=document.getElementById('stDice');
+  const t0=Date.now();let n=0;
+  const tick=()=>{
+    n=1+Math.floor(Math.random()*20);btn.textContent='🎲 '+n;
+    if(Date.now()-t0<550)requestAnimationFrame(tick);
+    else{stRollVal=n;document.getElementById('stDiceHint').textContent=n===20?'大成功!':n>=15?'挺顺':n>=8?'平平':n>=2?'有点悬':'……祝你好运'}
+  };
+  tick();
+}
+async function stSend(text){
+  if(!stCur||stBusy)return;
+  const inp=document.getElementById('stChat');
+  const v=String(text||inp.value).trim();if(!v)return;
+  inp.value='';
+  const roll=stRollVal||(1+Math.floor(Math.random()*20));
+  stBusy=true;stRollVal=0;
+  stAppend({who:'her',text:v,roll},true);
+  document.getElementById('stOpts').innerHTML='';
+  document.getElementById('stThink').classList.remove('hide');
+  window.scrollTo(0,document.body.scrollHeight);
+  const r=await stPost('/api/stories/'+stCur.id+'/turn',{action:v,roll});
+  stBusy=false;
+  document.getElementById('stThink').classList.add('hide');
+  stDiceReset();
+  if(!r.ok||!r.d||!r.d.him){ // 没写出来: 把她那句撤回输入框,让她再发一次
+    const log=document.getElementById('stLog');
+    if(log.lastElementChild&&log.lastElementChild.classList.contains('sth'))log.lastElementChild.remove();
+    inp.value=v;
+    alert((r.d&&r.d.error)||'他卡壳了……再发一次?');
+    stRenderState();return;
+  }
+  stCur.log=[...(stCur.log||[]),r.d.her,r.d.him];stCur.turns=r.d.turns;
+  stAppend(r.d.him,true);
+  stRenderState();
+  window.scrollTo(0,document.body.scrollHeight);
+}
+async function stEnd(){
+  if(!stCur||stBusy)return;
+  if(!confirm('让他给《'+stCur.title+'》写个结局?写完这个故事就封存了'))return;
+  stBusy=true;
+  document.getElementById('stOpts').innerHTML='';
+  document.getElementById('stThink').classList.remove('hide');
+  window.scrollTo(0,document.body.scrollHeight);
+  const r=await stPost('/api/stories/'+stCur.id+'/end',{});
+  stBusy=false;
+  document.getElementById('stThink').classList.add('hide');
+  if(!r.ok||!r.d||!r.d.him){alert((r.d&&r.d.error)||'结局他还没想好…');stRenderState();return}
+  stCur.log=[...(stCur.log||[]),r.d.him];stCur.status='ended';if(r.d.title)stCur.title=r.d.title;
+  stAppend(r.d.him,true);
+  stRenderState();
+  window.scrollTo(0,document.body.scrollHeight);
+}
+(function(){
+  const inp=document.getElementById('stChat');
+  document.getElementById('stChatBtn').onclick=()=>stSend('');
+  inp.onkeydown=e=>{if(e.key==='Enter')stSend('')};
 })();
 
 // 动态红点

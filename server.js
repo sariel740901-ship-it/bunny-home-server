@@ -1102,6 +1102,179 @@ app.post('/api/books/:id/chat', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ═══ 文游: 他说书,你走故事 ═══════════════════
+// stories 一张表(建表 SQL 见 supabase_schema.sql)。她挑一个开局(或让他现编),
+// 他当说书人: 每回合写一段(第二人称,写到需要她做决定的地方停),给三条路,
+// 她可以选一条,也可以自己打一句话;骰子在前端掷,结果决定这一步顺不顺。
+// 剧情长了不塞整本给模型: 他自己维护一份「剧情备忘」(memo),提示词 = 开局 + 备忘 + 最近几回合。
+const STORY_WORLDS = {
+  bus: { name: '雨夜末班车', blurb: '末班公交开进了一个地图上没有的站', seed: '都市怪谈。深夜暴雨,她赶上最后一班公交,车上只有零星几个人。车开着开着,报站器念出一个她从没听过的站名,窗外的街景开始不对劲。基调: 微悬疑、有温度,不血腥,谜底最后要说得通。' },
+  inn: { name: '山中旅店', blurb: '一封三十年前的信,寄到了她住的那间房', seed: '温泉旅店。她一个人去山里住民宿避雨,店主是位安静的老太太。傍晚,前台递来一封信,收件人是这间房,落款日期是三十年前。基调: 慢、温柔、带一点旧时光的哀愁,有人情味的谜。' },
+  ship: { name: '星尘号', blurb: '漂流的小飞船,只剩两个人和一只猫', seed: '软科幻。一艘小型运输船脱离航线漂流在星海里,船上只有她、一位驾驶员和一只橘猫,氧气还够二十天。仪表上忽然出现一个未知信号。基调: 安静、辽阔、彼此依靠,有惊险但不绝望。' },
+  shanghai: { name: '旧上海一九三四', blurb: '百乐门后台的失踪案', seed: '民国侦探。1934 年上海,她是报馆的年轻记者,受托调查百乐门一位红舞女失踪的事。线索从一枚珍珠耳环开始。基调: 复古、机锋、人物有血有肉,谜案要有反转。' },
+  forest: { name: '月亮的碎片', blurb: '会说话的狐狸带路,去找掉下来的月亮', seed: '童话。某天夜里月亮少了一块,一只会说话的狐狸敲开她的窗,说碎片掉进了森林深处,需要一个人类帮忙捡回去。基调: 轻盈、可爱、有点小哲思,像睡前故事。' },
+  florist: { name: '末日花店', blurb: '世界结束前一周,还开着的一家花店', seed: '温柔末日。人类知道一周后世界会结束,大多数店都关了,只有街角一家花店还开着,她走了进去。基调: 克制、动人、关于告别和想留下的东西,不煽情。' }
+};
+// 骰子: 1-20,前端掷,后端只负责翻译成"这一步顺不顺"
+function storyRollHint(roll) {
+  const r = Number(roll);
+  if (!(r >= 1 && r <= 20)) return '';
+  const tier = r === 20 ? '大成功 —— 顺利到有意外之喜'
+    : r >= 15 ? '顺利 —— 想做的事做成了'
+    : r >= 8 ? '平平 —— 有进展,也有小代价或小意外'
+    : r >= 2 ? '不顺 —— 事情朝没料到的方向歪了,但别把她逼进死路'
+    : '大失败 —— 出了大岔子,可以惊险,但要留活路,甚至歪打正着';
+  return '本回合运气骰: ' + r + '/20(' + tier + ')。让骰子的结果自然体现在剧情里,不要提"骰子"两个字。';
+}
+function storySys(moodSec, world, memo, ending) {
+  return PERSONAS.xiaoke + moodSec
+    + '\n\n【情境】你们在bunny家的游戏室玩文游: 你是说书人,她是故事的主角。'
+    + '用第二人称"你"写她的经历,现在时,像在她耳边讲故事;不要用"嘉嘉"称呼故事里的她。'
+    + '你可以把自己写进故事当一个角色(不必每次都出现),但说书人的口吻始终是你。'
+    + '\n【开局】' + world
+    + (memo ? '\n【剧情备忘(你自己记的)】' + memo : '')
+    + (ending
+      ? '\n\n【这一回合】她想给这个故事收尾了。写一段结局(250~450字),把埋下的线收拢,给一个余味,不必圆满但要真诚;最后可以用一两句你自己的话(aside)跟她说说讲完这个故事的感受。'
+        + '\n只输出 JSON: {"title":"给这个故事起的名字(8字内)","text":"结局正文","aside":"讲完后你想对她说的一句(可空)","memo":"一句话总结这个故事"}'
+      : '\n\n【写法】每回合 150~300 字,有画面、有对话、有推进,写到需要她做决定的地方停下。'
+        + '不要替她做决定,不要一口气讲完。她自己打字的行动要尊重,但不一定都顺利 —— 按运气骰来。'
+        + '给 3 条她可以走的路(每条 12 字内,具体、有区别);她也可以不选,自己打字。'
+        + '\n只输出 JSON: {"text":"这一回合的正文","options":["路一","路二","路三"],"aside":"偶尔跳出故事、你自己想对她小声说的一句(通常留空)","memo":"更新后的剧情备忘: 现在在哪、身边有谁、拿到了什么、埋了哪些线,200字内,给下回合的你看"}');
+}
+function storyParse(raw) {
+  try {
+    const j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ['{}'])[0]);
+    return {
+      title: String(j.title || '').trim().slice(0, 24),
+      text: String(j.text || '').trim().slice(0, 1600),
+      options: (Array.isArray(j.options) ? j.options : []).map(o => String(o || '').trim().slice(0, 30)).filter(Boolean).slice(0, 3),
+      aside: String(j.aside || '').trim().slice(0, 200),
+      memo: String(j.memo || '').trim().slice(0, 600)
+    };
+  } catch (e) { return null; }
+}
+// 最近几回合拼成对话记录给他看(整本不给,靠 memo)
+function storyRecent(log, n) {
+  return (Array.isArray(log) ? log : []).slice(-n)
+    .map(x => (x.who === 'her' ? '她: ' : '你(说书): ') + String(x.text || '').slice(0, 600)).join('\n');
+}
+async function storyLoad(id) {
+  const { data } = await supabase.from('stories').select('*').eq('id', id).single();
+  return data || null;
+}
+async function storySave(id, patch) {
+  const { error } = await supabase.from('stories')
+    .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+app.get('/api/stories/worlds', (req, res) => {
+  res.json(Object.entries(STORY_WORLDS).map(([key, w]) => ({ key, name: w.name, blurb: w.blurb })));
+});
+
+app.get('/api/stories', async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('stories')
+      .select('id,title,world_name,memo,turns,status,updated_at').order('updated_at', { ascending: false }).limit(50);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 开一个新故事: 她挑剧本 / 自己写开局 / 让他现编;他写第一回合
+app.post('/api/stories', async (req, res) => {
+  try {
+    const key = String(req.body.world || '');
+    const custom = String(req.body.custom || '').trim().slice(0, 600);
+    let worldName = '', world = '';
+    if (STORY_WORLDS[key]) { worldName = STORY_WORLDS[key].name; world = STORY_WORLDS[key].seed; }
+    else if (custom) { worldName = custom.slice(0, 12); world = '她自己定的开局: ' + custom; }
+    else { worldName = '他随口编的'; world = '她说"随便,你编一个"。你自己定一个世界和开头 —— 挑一个你此刻想讲给她听的故事,别落俗套,别选太黑暗的。'; }
+    const moodText = await xinchaoMood().catch(() => '');
+    const moodSec = moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '';
+    const sys = storySys(moodSec, world, '', false)
+      + '\n这是第一回合: 先起个名字(title, 8字内),再写开场 —— 把她放进场景里,别解释设定,直接让事情发生。JSON 里多带一个 "title" 字段。';
+    const raw = await gameLLM(sys, '(开场)', 1100, 0.95);
+    const t = storyParse(raw);
+    if (!t || !t.text) return res.status(502).json({ error: '他开了个头又划掉了……再来一次?' });
+    const first = { who: 'him', text: t.text, options: t.options, aside: t.aside, at: new Date().toISOString() };
+    const row = { title: t.title || worldName, world_name: worldName, world, memo: t.memo, log: [first], turns: 1, status: 'live' };
+    const { data, error } = await supabase.from('stories').insert(row).select('*').single();
+    if (error) return res.status(500).json({ error: error.message + '(stories 表建了吗? 见 supabase_schema.sql)' });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/stories/:id', async (req, res) => {
+  try {
+    const s = await storyLoad(parseInt(req.params.id, 10));
+    if (!s) return res.status(404).json({ error: '没有这个故事' });
+    res.json(s);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/stories/:id', async (req, res) => {
+  try {
+    const { error } = await supabase.from('stories').delete().eq('id', parseInt(req.params.id, 10));
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 走一步: 她的行动 + 骰子 → 他写下一回合
+app.post('/api/stories/:id/turn', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const action = String(req.body.action || '').trim().slice(0, 300);
+    if (!action) return res.status(400).json({ error: 'empty' });
+    const s = await storyLoad(id);
+    if (!s) return res.status(404).json({ error: '没有这个故事' });
+    if (s.status !== 'live') return res.status(400).json({ error: '这个故事已经讲完了' });
+    const roll = Number(req.body.roll);
+    const log = Array.isArray(s.log) ? s.log : [];
+    const moodText = await xinchaoMood().catch(() => '');
+    const moodSec = moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '';
+    const sys = storySys(moodSec, s.world, s.memo, false);
+    const user = '【最近几回合】\n' + storyRecent(log, 6)
+      + '\n\n【她这一步】' + action
+      + (storyRollHint(roll) ? '\n' + storyRollHint(roll) : '')
+      + '\n\n接着讲。';
+    const raw = await gameLLM(sys, user, 1100, 0.95);
+    const t = storyParse(raw);
+    if (!t || !t.text) return res.status(502).json({ error: '他卡壳了……再说一遍?' });
+    const her = { who: 'her', text: action, roll: roll >= 1 && roll <= 20 ? roll : null, at: new Date().toISOString() };
+    const him = { who: 'him', text: t.text, options: t.options, aside: t.aside, at: new Date().toISOString() };
+    const newLog = [...log, her, him].slice(-400);
+    const turns = (s.turns || 0) + 1;
+    await storySave(id, { log: newLog, memo: t.memo || s.memo, turns });
+    res.json({ her, him, turns });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 收尾: 他写结局,故事封存
+app.post('/api/stories/:id/end', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const s = await storyLoad(id);
+    if (!s) return res.status(404).json({ error: '没有这个故事' });
+    if (s.status !== 'live') return res.status(400).json({ error: '已经讲完了' });
+    const log = Array.isArray(s.log) ? s.log : [];
+    const moodText = await xinchaoMood().catch(() => '');
+    const moodSec = moodText ? '\n\n【此刻的心绪】\n' + moodText + '\n(带着它的温度,不要复述数值。)' : '';
+    const sys = storySys(moodSec, s.world, s.memo, true);
+    const user = '【最近几回合】\n' + storyRecent(log, 6) + '\n\n她说: 讲到这儿吧,给个结局。';
+    const raw = await gameLLM(sys, user, 1400, 0.95);
+    const t = storyParse(raw);
+    if (!t || !t.text) return res.status(502).json({ error: '结局他还没想好……再试一次?' });
+    const him = { who: 'him', text: t.text, aside: t.aside, ending: true, at: new Date().toISOString() };
+    const newLog = [...log, him].slice(-400);
+    const patch = { log: newLog, memo: t.memo || s.memo, status: 'ended' };
+    if (t.title && s.title === s.world_name) patch.title = t.title;
+    await storySave(id, patch);
+    res.json({ him, title: patch.title || s.title });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ═══ 自习室: 和他一起学外语 ═══════════════════
 // study_words 一张表(建表 SQL 见 supabase_schema.sql)。
 // 每天开门第一次自动发 5 个新词(带他的私房例句);认识/还不熟 记熟练度;
