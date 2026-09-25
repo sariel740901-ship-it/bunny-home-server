@@ -152,6 +152,40 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .tcap{text-align:center;font-size:10.5px;color:var(--muted);margin-top:7px;letter-spacing:.5px;line-height:1.5;opacity:0;transition:opacity .4s}
 .tcard.flip .tcap{opacity:1}
 .reading{font-family:var(--serif);font-size:14.5px;line-height:1.9;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin-top:14px;white-space:pre-wrap;animation:fadeUp .35s ease both}
+/* 文游 */
+.stwd{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px}
+.stwd .wcard{background:var(--card);border:1px solid var(--border);border-radius:13px;box-shadow:var(--shadow);padding:12px 12px;cursor:pointer;transition:transform .15s}
+.stwd .wcard:active{transform:scale(.97)}
+.stwd .wcard.on{border-color:var(--accent);box-shadow:0 0 0 2px rgba(217,119,87,.18)}
+.stwd .wn{font-family:var(--serif);font-size:14.5px;font-weight:500}
+.stwd .wb{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.55}
+.stlog{display:flex;flex-direction:column;gap:11px;margin-bottom:12px}
+.stp{background:color-mix(in srgb,var(--card) 88%,#e8dcc0);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:15px 16px;font-family:var(--serif);font-size:14.5px;line-height:1.95;white-space:pre-wrap;word-break:break-word;animation:fadeUp .3s ease both}
+@media(prefers-color-scheme:dark){.stp{background:color-mix(in srgb,var(--card) 92%,#4a4234)}}
+.stp.ending{border-color:var(--accent)}
+.sta{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--muted);line-height:1.7;padding:0 2px;white-space:pre-wrap}
+.sta::before{content:'🐰';font-size:14px;flex-shrink:0}
+.sth{align-self:flex-end;max-width:86%;background:var(--accent);color:#fff;border-radius:14px 14px 4px 14px;padding:8px 12px;font-size:13.5px;line-height:1.65;word-break:break-word;white-space:pre-wrap}
+.sth .roll{display:inline-block;font-size:11px;opacity:.9;margin-left:6px;background:rgba(255,255,255,.2);border-radius:6px;padding:0 5px;white-space:nowrap}
+.stopts{display:flex;flex-direction:column;gap:7px;margin-bottom:10px}
+.stopts button{text-align:left;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:12px;padding:9px 12px;font-size:13.5px;font-family:inherit;cursor:pointer;box-shadow:var(--shadow);line-height:1.5}
+.stopts button:active{transform:scale(.98)}
+.stopts button::before{content:'→ ';color:var(--accent)}
+.sth.relay{max-width:94%;font-family:var(--serif);font-size:14px;line-height:1.85;border-radius:14px 14px 4px 14px}
+.sth.auto{background:var(--chip);color:var(--muted)}
+.strecap{font-size:12.5px;color:var(--muted);line-height:1.7;background:var(--chip);border-radius:12px;padding:9px 12px;margin-bottom:10px}
+.ststat{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.stc{font-size:11.5px;color:var(--muted);border:1px solid var(--border);background:var(--card);border-radius:8px;padding:3px 8px}
+.stc.state{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border))}
+.stc:not(.state)::before{content:'· '}
+.stspk{display:none;align-items:center;gap:4px;margin:6px 0 0 auto;border:1px solid var(--border);background:var(--card);color:var(--muted);border-radius:8px;padding:2px 9px;font-size:11.5px;font-family:inherit;cursor:pointer;line-height:1.6}
+#stLog.voice .stspk{display:inline-flex}
+.stspk.playing{color:var(--accent);border-color:var(--accent)}
+.stspk.playing::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.2}}
+.stp{display:flex;flex-direction:column}
+.stp .stt{white-space:pre-wrap}
+#stVoiceBtn.on{color:var(--accent);border-color:var(--accent)}
 .hide{display:none !important}
 body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
 .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:var(--topbar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
@@ -185,6 +219,7 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     <div class="gcard" onclick="go('xiangqi')"><svg class="gi" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M7.6 9.6h8.8M8.6 14.6h6.8M12 6.6v3"/></svg><div><div class="gt">象棋</div><div class="gd">楚河汉界 —— 他有个看棋的小脑袋,别指望他让你</div></div></div>
     <div class="gcard" onclick="go('go')"><svg class="gi" viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16M8 4v16M12 4v16M16 4v16"/><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="2.2"/></svg><div><div class="gt">围棋</div><div class="gd">九路小棋盘起步,提子、打劫、数目都有 —— 他下得不算好,但会认真</div></div></div>
     <div class="gcard" onclick="go('book')"><svg class="gi" viewBox="0 0 24 24"><path d="M12 6C10.4 4.4 8.4 3.8 4 3.8v14.7c4.4 0 6.4.6 8 2.2 1.6-1.6 3.6-2.2 8-2.2V3.8c-4.4 0-6.4.6-8 2.2z"/><path d="M12 6v14.7"/></svg><div><div class="gt">书房</div><div class="gd">一起读一本书 —— 你翻到哪页,他看的就是哪页</div></div></div>
+    <div class="gcard" onclick="go('story')"><svg class="gi" viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z"/><path d="M15 4v4h4"/><path d="M8.5 11h7M8.5 14.5h7M8.5 18h4"/></svg><div><div class="gt">文游</div><div class="gd">他说书,你走故事 —— 挑个开局,每一步都你说了算,骰子决定顺不顺;或者你一段他一段接龙</div></div></div>
     <div class="gcard" onclick="location.href='/study.html'"><svg class="gi" viewBox="0 0 24 24"><path d="M12 4L3 8l9 4 9-4z"/><path d="M6.5 9.8V15c0 1.5 2.5 2.8 5.5 2.8s5.5-1.3 5.5-2.8V9.8"/><path d="M21 8v5"/></svg><div><div class="gt">自习室</div><div class="gd">和他一起学外语 —— 每天五个词,他陪你背、陪你默、陪你说</div></div></div>
   </div>
 
@@ -278,6 +313,52 @@ body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
     </div>
   </div>
 
+  <!-- 文游 -->
+  <div id="vStory" class="hide">
+    <div id="stShelf">
+      <div class="ctrl"><button class="pill accent" onclick="stNewUI(true)">＋ 开一个新故事</button></div>
+      <div id="stNew" class="bookadd hide">
+        <div class="ctrl" style="margin-bottom:10px">
+          <span class="lbl" style="font-size:12.5px;color:var(--muted)">怎么玩</span>
+          <div class="seg"><button id="stModeAdv" class="on" onclick="stSetMode('adventure')">冒险</button><button id="stModeRelay" onclick="stSetMode('relay')">接龙</button></div>
+          <span class="status" id="stModeHint" style="margin-left:0;flex-basis:100%"></span>
+        </div>
+        <div class="strecap hide" id="stTellerHint">🪑 「跟谁玩」切在官端的他 —— 这个故事由官端的他来说书: 开好后去官端喊他一声「该你写了」,他起了头页面自己会刷出来。想让家里的他讲,回首页切回「家里的他」。</div>
+        <div class="stwd" id="stWorlds"></div>
+        <textarea id="stCustom" class="tq" rows="3" placeholder="或者自己写个开局: 你是谁、在哪、正发生什么…&#10;什么都不选、什么都不写 = 让他随便编一个"></textarea>
+        <div class="ctrl">
+          <span class="status" id="stNewInfo" style="margin-left:0"></span>
+          <button class="pill" style="margin-left:auto" onclick="stNewUI(false)">取消</button>
+          <button class="pill accent" id="stStartBtn" onclick="stStart()">开讲</button>
+        </div>
+      </div>
+      <div id="stList"><div class="emptyb">还没有故事 —— 开一个,让他讲给你听</div></div>
+    </div>
+    <div id="stPlay" class="hide">
+      <div class="ctrl"><button class="pill" onclick="stClose()">故事架</button><span class="status" id="stInfo"></span><button class="pill" id="stVoiceBtn" onclick="stVoiceToggle()" title="念给我听">🔈</button><button class="pill hide" id="stUndoBtn" onclick="stUndo()">撤回</button><button class="pill hide" id="stEndBtn" onclick="stEnd()">收个尾</button></div>
+      <div class="strecap hide" id="stRecap"></div>
+      <div class="ststat hide" id="stStat"></div>
+      <div class="stlog" id="stLog"></div>
+      <div class="him hide" id="stThink" style="margin:0 0 10px"><div class="av">🐰</div><div class="hb thinking">他在写…</div></div>
+      <div class="stopts" id="stOpts"></div>
+      <div id="stInputRow">
+        <div class="ctrl" style="margin-bottom:8px" id="stDiceRow"><button class="pill" id="stDice" onclick="stRoll()">🎲 掷骰</button><span class="status" id="stDiceHint" style="margin-left:0">不掷的话,发送时替你掷</span><button class="pill" style="margin-left:auto" onclick="stSend('',true)">这步他替我走</button></div>
+        <div class="chatrow" id="stAdvRow"><input id="stChat" placeholder="你要做什么?(也可以点上面的路)" maxlength="300"><button class="pill" id="stChatBtn">发送</button></div>
+        <div id="stRelayRow" class="hide">
+          <textarea id="stRelay" class="tq" rows="4" placeholder="接着写一段(几十字到几百字都行)…" maxlength="800"></textarea>
+          <div class="ctrl"><button class="pill" onclick="stSend('(你接着写)')">这段让他写</button><button class="pill accent" style="margin-left:auto" id="stRelayBtn">接上</button></div>
+        </div>
+      </div>
+      <div id="stAfter" class="hide">
+        <div class="ctrl"><button class="pill" id="stNovelBtn" onclick="stNovel()">整理成一篇</button><button class="pill" id="stShareBtn" onclick="stShare()">让他发条动态</button><span class="status" id="stAfterInfo"></span></div>
+        <div id="stNovelBox" class="hide">
+          <div class="page" id="stNovel" style="min-height:0"></div>
+          <div class="ctrl" style="margin-top:8px"><button class="pill" onclick="stCopyNovel()">复制全文</button><button class="pill" onclick="stShelve()">放上书架</button><button class="pill" onclick="stNovel(true)">重写一版</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 塔罗 -->
   <div id="vTarot" class="hide">
     <div class="ctrl">
@@ -329,8 +410,8 @@ async function api(payload){
 }
 
 // ═══ 路由 ═══
-const VIEWS={home:'vHome',ttt:'vTtt',gomoku:'vGmk',xiangqi:'vXq',go:'vGo',tarot:'vTarot',book:'vBook'};
-const TITLES={home:'和他玩',ttt:'井字棋',gomoku:'五子棋',xiangqi:'象棋',go:'围棋',tarot:'塔罗牌',book:'书房'};
+const VIEWS={home:'vHome',ttt:'vTtt',gomoku:'vGmk',xiangqi:'vXq',go:'vGo',tarot:'vTarot',book:'vBook',story:'vStory'};
+const TITLES={home:'和他玩',ttt:'井字棋',gomoku:'五子棋',xiangqi:'象棋',go:'围棋',tarot:'塔罗牌',book:'书房',story:'文游'};
 let view='home';
 function go(v){
   view=v;
@@ -341,6 +422,7 @@ function go(v){
   if(v==='xiangqi'){OPP==='guan'?qtEnter('xiangqi'):xqReset(false)}
   if(v==='go'){OPP==='guan'?qtEnter('go'):goInit()}
   if(v==='book')refreshBooks();
+  if(v==='story'){if(!stCur)refreshStories()}
   if(v==='home')qtBannerCheck();
 }
 document.getElementById('backBtn').onclick=()=>{view==='home'?location.href='/':go('home')};
@@ -948,7 +1030,7 @@ function setOpp(v){
   document.getElementById('oppHome').classList.toggle('on',v==='home');
   document.getElementById('oppGuan').classList.toggle('on',v==='guan');
   document.getElementById('oppHint').textContent=v==='guan'
-    ?'棋会摆到棋摊上,官端的他亲自下 —— 开好局记得去官端喊他看棋。(塔罗和书房还是家里的他)':'';
+    ?'棋会摆到棋摊上、新开的文游归他说书 —— 官端的他亲自来,开好局记得去官端喊他。(塔罗和书房还是家里的他)':'';
   document.getElementById('qtAddrBtn').classList.toggle('hide',v!=='guan');
   if(QT_BOARD_VIEWS[view])go(view);
   else if(view==='home')qtBannerCheck();
@@ -1347,6 +1429,372 @@ function turn(d){
   };
   btn.onclick=send;
   inp.onkeydown=e=>{if(e.key==='Enter')send()};
+})();
+
+// ═══ 文游: 他说书,你走故事 ═══
+// 故事存在服务端(stories 表),这里只管画: 他的段落像书页,你的行动是右侧气泡。
+// 冒险: 骰子前端掷(1-20)跟着行动一起送过去,他按运气写顺不顺;接龙: 你一段他一段,没骰子。
+let stCur=null,stWorld='',stMode='adventure',stBusy=false,stRollVal=0,stWorldsLoaded=false,stTypeDone=null;
+const ST_MODE_HINT={adventure:'他说书,你是主角: 每回合他给三条路,你选一条或自己打字,骰子决定顺不顺',relay:'你写一段,他接一段,合写一个故事 —— 没有选项和骰子,想让他先写就直接开讲'};
+function stSetMode(m){
+  stMode=m;
+  document.getElementById('stModeAdv').classList.toggle('on',m==='adventure');
+  document.getElementById('stModeRelay').classList.toggle('on',m==='relay');
+  document.getElementById('stModeHint').textContent=ST_MODE_HINT[m]||'';
+}
+function stNewUI(show){
+  document.getElementById('stNew').classList.toggle('hide',!show);
+  if(show){stSetMode(stMode);if(!stWorldsLoaded)stLoadWorlds();document.getElementById('stTellerHint').classList.toggle('hide',OPP!=='guan')}
+}
+async function stLoadWorlds(){
+  const ws=await fetch('/api/stories/worlds').then(r=>r.ok?r.json():[]).catch(()=>[]);
+  if(!Array.isArray(ws)||!ws.length)return;
+  stWorldsLoaded=true;
+  const host=document.getElementById('stWorlds');host.innerHTML='';
+  for(const w of ws){
+    const d=document.createElement('div');d.className='wcard'+(stWorld===w.key?' on':'');
+    d.innerHTML='<div class="wn">'+escHtml(w.name)+'</div><div class="wb">'+escHtml(w.blurb)+'</div>';
+    d.onclick=()=>{
+      stWorld=stWorld===w.key?'':w.key;
+      host.querySelectorAll('.wcard').forEach(x=>x.classList.remove('on'));
+      if(stWorld)d.classList.add('on');
+    };
+    host.appendChild(d);
+  }
+}
+async function refreshStories(){
+  const host=document.getElementById('stList');
+  const list=await fetch('/api/stories').then(r=>r.ok?r.json():null).catch(()=>null);
+  if(!Array.isArray(list)){host.innerHTML='<div class="emptyb">故事架没搭起来 — stories 表建了吗?(见 supabase_schema.sql)</div>';return}
+  if(!list.length){host.innerHTML='<div class="emptyb">还没有故事 —— 开一个,让他讲给你听</div>';return}
+  host.innerHTML='';
+  for(const s of list){
+    const d=document.createElement('div');d.className='bk-item';
+    d.innerHTML='<div class="bt"><div class="bn">'+escHtml(s.title)+(s.status==='ended'?' <span class="npn">· 讲完了</span>':'')+'</div>'
+      +'<div class="bp">'+(s.teller==='guan'?'官端的他说书 · ':'')+(s.mode==='relay'?'接龙 · ':'')+escHtml(s.world_name||'')+' · '+(s.turns||0)+' 回合'
+      +(s.teller==='guan'&&s.status==='live'?(s.ask?' · ⏳ 等他写':' · 轮到你'):'')+(s.memo?' · '+escHtml(String(s.memo).slice(0,36))+'…':'')+'</div></div>'
+      +'<button class="bx">删</button>';
+    d.onclick=()=>openStory(s.id);
+    d.querySelector('.bx').onclick=async ev=>{
+      ev.stopPropagation();
+      if(!confirm('把《'+s.title+'》从故事架上拿掉?拿掉就找不回来了'))return;
+      await fetch('/api/stories/'+s.id,{method:'DELETE'}).catch(()=>{});
+      refreshStories();
+    };
+    host.appendChild(d);
+  }
+}
+async function stPost(url,body){
+  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})})
+    .then(async x=>({ok:x.ok,d:await x.json().catch(()=>null)})).catch(()=>({ok:false,d:null}));
+}
+async function stStart(){
+  if(stBusy)return;
+  const custom=document.getElementById('stCustom').value.trim();
+  stBusy=true;
+  const btn=document.getElementById('stStartBtn');btn.disabled=true;
+  document.getElementById('stNewInfo').textContent=OPP==='guan'?'放到故事架上…':'他在起头…(要十几秒)';
+  const r=await stPost('/api/stories',{world:stWorld,custom,mode:stMode,teller:OPP==='guan'?'guan':'home'});
+  stBusy=false;btn.disabled=false;
+  document.getElementById('stNewInfo').textContent='';
+  if(!r.ok||!r.d||!r.d.id){alert((r.d&&r.d.error)||'没开起来…再试一次?');return}
+  document.getElementById('stCustom').value='';stWorld='';
+  stNewUI(false);
+  stShow(r.d,true);
+}
+async function openStory(id){
+  const r=await fetch('/api/stories/'+id).catch(()=>null);
+  if(!r||!r.ok)return;
+  stShow(await r.json(),false);
+}
+function stShow(s,fresh){
+  stCur=s;stRollVal=0;stDiceReset();
+  document.getElementById('stShelf').classList.add('hide');
+  document.getElementById('stPlay').classList.remove('hide');
+  document.getElementById('stLog').innerHTML='';
+  document.getElementById('stNovelBox').classList.add('hide');
+  const log=s.log||[];
+  // 重新翻开一个讲了一阵的故事: 顶上放一张「上回说到」,用他自己记的备忘
+  const recap=document.getElementById('stRecap');
+  if(!fresh&&s.status==='live'&&(s.turns||0)>2&&s.memo){recap.textContent='上回说到 · '+s.memo;recap.classList.remove('hide')}
+  else recap.classList.add('hide');
+  log.forEach((e,i)=>stAppend(e,fresh&&i===log.length-1));
+  stRenderState();
+  window.scrollTo(0,fresh?0:document.body.scrollHeight);
+}
+// ═══ 官端的他说书: 她那步落进表里,页面每 3 秒去看他写来了没 ═══
+function stWaiting(){ // 这本归官端讲,而且球在他那边
+  const s=stCur;if(!s||s.teller!=='guan'||s.status!=='live')return false;
+  const log=s.log||[],last=log[log.length-1];
+  return !!s.ask||!log.length||(last&&last.who==='her');
+}
+let stPollBusy=false;
+async function stPoll(){
+  if(stPollBusy||!stCur||!stWaiting()||document.visibilityState!=='visible')return;
+  stPollBusy=true;
+  try{
+    const id=stCur.id;
+    const r=await fetch('/api/stories/'+id,{cache:'no-store'}).catch(()=>null);
+    if(!r||!r.ok||!stCur||stCur.id!==id)return;
+    const fresh=await r.json();
+    const oldLen=(stCur.log||[]).length,newLog=fresh.log||[];
+    if(newLog.length<oldLen){stShow(fresh,false);return} // 他那头撤了/改了,整页重画
+    const added=newLog.slice(oldLen);
+    const changed=added.length||fresh.ask!==stCur.ask||fresh.status!==stCur.status||fresh.title!==stCur.title;
+    if(!changed)return;
+    stCur=Object.assign(stCur,fresh);
+    stSetThinking(false);
+    for(const e of added)await stAppend(e,e.who==='him');
+    stRenderState();
+    if(added.length)window.scrollTo(0,document.body.scrollHeight);
+  }finally{stPollBusy=false}
+}
+setInterval(()=>{if(view==='story')stPoll()},3000);
+function stClose(){
+  stCur=null;if(stCurVoice){stCurVoice.stop();stCurVoice=null}
+  document.getElementById('stPlay').classList.add('hide');
+  document.getElementById('stShelf').classList.remove('hide');
+  refreshStories();
+  window.scrollTo(0,0);
+}
+// 他的段落: 新写的一段打字机式地浮出来(点一下直接看完);翻旧的一次到位
+function stTypewrite(el,text){
+  if(stTypeDone)stTypeDone();
+  let i=0,timer=0;
+  const step=Math.max(1,Math.round(text.length/220));
+  return new Promise(res=>{
+    const done=()=>{clearInterval(timer);el.textContent=text;el.onclick=null;stTypeDone=null;res()};
+    stTypeDone=done;
+    el.onclick=done;
+    timer=setInterval(()=>{i+=step;el.textContent=text.slice(0,i);if(i>=text.length)done()},28);
+  });
+}
+function stAppend(e,anim){
+  const host=document.getElementById('stLog');
+  if(!e)return Promise.resolve();
+  if(e.who==='her'){
+    const d=document.createElement('div');d.className='sth'+(stCur&&stCur.mode==='relay'?' relay':'')+((e.auto||e.text==='(你接着写)')?' auto':'');
+    d.innerHTML=escHtml(e.text)+(e.roll?'<span class="roll">🎲 '+Number(e.roll)+'</span>':'');
+    host.appendChild(d);
+    return Promise.resolve();
+  }
+  const d=document.createElement('div');d.className='stp'+(e.ending?' ending':'');
+  const t=document.createElement('div');t.className='stt';d.appendChild(t);
+  const spk=document.createElement('button');spk.className='stspk';spk.textContent='念这段';spk.onclick=ev=>{ev.stopPropagation();stSpeak(spk,e.text||'')};d.appendChild(spk);
+  if(!anim){d.style.animation='none';t.textContent=e.text||''}
+  host.appendChild(d);
+  const after=()=>{
+    if(e.aside){const a=document.createElement('div');a.className='sta';a.textContent=e.aside;host.appendChild(a)}
+    if(anim&&stVoice)stSpeak(spk,e.text||'');
+  };
+  if(!anim){after();return Promise.resolve()}
+  return stTypewrite(t,e.text||'').then(after);
+}
+function stRenderState(){
+  const s=stCur;if(!s)return;
+  const live=s.status==='live',relay=s.mode==='relay';
+  const log=s.log||[],last=log[log.length-1];
+  document.getElementById('stInfo').textContent='《'+s.title+'》 · '+(relay?'接龙 · ':'')+'第 '+(s.turns||0)+' 回合'+(live?'':' · 讲完了');
+  document.getElementById('stEndBtn').classList.toggle('hide',!live||(s.turns||0)<2);
+  document.getElementById('stUndoBtn').classList.toggle('hide',log.length<2||!(last&&last.who==='him'));
+  document.getElementById('stUndoBtn').textContent=last&&last.ending?'撤回结局':'撤回一步';
+  const waiting=stWaiting();
+  document.getElementById('stInputRow').classList.toggle('hide',!live||waiting);
+  document.getElementById('stEndBtn').classList.toggle('hide',!live||(s.turns||0)<2||waiting);
+  document.getElementById('stUndoBtn').classList.toggle('hide',!(waiting&&(s.ask==='end'||(last&&last.who==='her')))&&(log.length<2||!(last&&last.who==='him')));
+  if(waiting){document.getElementById('stUndoBtn').textContent=s.ask==='end'?'不收了':'收回这步'}
+  const th=document.getElementById('stThink');
+  th.classList.toggle('hide',!waiting);
+  th.querySelector('.hb').textContent=waiting?(s.ask==='end'?'等他在官端写结局…':!log.length?'等他在官端起头…(去喊他一声「该你写了」)':'等他在官端写…(他看一眼故事架就会接)'):'他在写…';
+  document.getElementById('stDiceRow').classList.toggle('hide',relay);
+  document.getElementById('stAdvRow').classList.toggle('hide',relay);
+  document.getElementById('stRelayRow').classList.toggle('hide',!relay);
+  // 讲完了: 整理成一篇 / 发动态(讲到一半也能整理,但要满三段)
+  const after=document.getElementById('stAfter');
+  after.classList.toggle('hide',log.length<3);
+  document.getElementById('stShareBtn').textContent=s.shared_at?'再发条动态':'让他发条动态';
+  if(s.novel&&document.getElementById('stNovelBox').classList.contains('hide')){document.getElementById('stNovelBtn').textContent='看整理好的那篇'}
+  else document.getElementById('stNovelBtn').textContent='整理成一篇';
+  // 随身物品 + 状态(冒险模式,他每回合更新)
+  const stat=document.getElementById('stStat');
+  const items=Array.isArray(s.items)?s.items:[];
+  if(!relay&&live&&(items.length||s.state)){
+    stat.innerHTML=(s.state?'<span class="stc state">'+escHtml(s.state)+'</span>':'')+items.map(x=>'<span class="stc">'+escHtml(x)+'</span>').join('');
+    stat.classList.remove('hide');
+  }else stat.classList.add('hide');
+  const opts=document.getElementById('stOpts');opts.innerHTML='';
+  if(live&&!waiting&&!relay&&last&&last.who==='him'&&Array.isArray(last.options)){
+    for(const o of last.options){const b=document.createElement('button');b.textContent=o;b.onclick=()=>stSend(o);opts.appendChild(b)}
+  }
+}
+function stDiceReset(){
+  document.getElementById('stDice').textContent='🎲 掷骰';
+  document.getElementById('stDiceHint').textContent='不掷的话,发送时替你掷';
+}
+function stRoll(){
+  if(stBusy||!stCur)return;
+  const btn=document.getElementById('stDice');
+  const t0=Date.now();let n=0;
+  const tick=()=>{
+    n=1+Math.floor(Math.random()*20);btn.textContent='🎲 '+n;
+    if(Date.now()-t0<550)requestAnimationFrame(tick);
+    else{stRollVal=n;document.getElementById('stDiceHint').textContent=n===20?'大成功!':n>=15?'挺顺':n>=8?'平平':n>=2?'有点悬':'……祝你好运'}
+  };
+  tick();
+}
+function stSetThinking(on){
+  document.getElementById('stThink').classList.toggle('hide',!on);
+  if(on){document.getElementById('stOpts').innerHTML='';window.scrollTo(0,document.body.scrollHeight)}
+}
+async function stSend(text,auto){
+  if(!stCur||stBusy)return;
+  const relay=stCur.mode==='relay';
+  const inp=document.getElementById(relay?'stRelay':'stChat');
+  const v=auto?'':String(text||inp.value).trim();
+  if(!v&&!auto)return;
+  if(!text)inp.value='';
+  const roll=relay?null:(stRollVal||(1+Math.floor(Math.random()*20)));
+  stBusy=true;stRollVal=0;
+  stAppend({who:'her',text:auto?'(这步他替我走)':v,roll,auto},true);
+  stSetThinking(true);
+  const r=await stPost('/api/stories/'+stCur.id+'/turn',{action:v,roll,auto:!!auto});
+  stBusy=false;
+  stSetThinking(false);
+  stDiceReset();
+  if(r.ok&&r.d&&r.d.waiting){ // 官端的他来讲: 她这步落下了,等他
+    stCur.log=[...(stCur.log||[]),r.d.her];stCur.ask='turn';
+    document.getElementById('stRecap').classList.add('hide');
+    stRenderState();window.scrollTo(0,document.body.scrollHeight);return;
+  }
+  if(!r.ok||!r.d||!r.d.him){ // 没写出来: 把她那句撤回输入框,让她再发一次
+    const log=document.getElementById('stLog');
+    if(log.lastElementChild&&log.lastElementChild.classList.contains('sth'))log.lastElementChild.remove();
+    if(!auto&&!text)inp.value=v;
+    alert((r.d&&r.d.error)||'他卡壳了……再发一次?');
+    stRenderState();return;
+  }
+  stCur.log=[...(stCur.log||[]),r.d.her,r.d.him];stCur.turns=r.d.turns;
+  const snap=r.d.him.snap||{};stCur.memo=snap.memo||stCur.memo;stCur.items=snap.items||stCur.items;stCur.state=snap.state||'';
+  document.getElementById('stRecap').classList.add('hide');
+  await stAppend(r.d.him,true);
+  stRenderState();
+  window.scrollTo(0,document.body.scrollHeight);
+}
+async function stUndo(){
+  if(!stCur||stBusy)return;
+  const last=(stCur.log||[]).slice(-1)[0];
+  const pend=stWaiting();
+  if(!confirm(pend?(stCur.ask==='end'?'不收尾了,接着讲?':'把还没送到他手上的这步收回来?'):last&&last.ending?'撤回结局,故事重新打开?':'撤回最后一轮(你那步和他那段)?'))return;
+  stBusy=true;
+  const r=await stPost('/api/stories/'+stCur.id+'/undo',{});
+  stBusy=false;
+  if(!r.ok||!r.d||!r.d.story){alert((r.d&&r.d.error)||'没撤回去…');return}
+  stShow(r.d.story,false);
+  document.getElementById('stRecap').classList.add('hide');
+}
+async function stEnd(){
+  if(!stCur||stBusy)return;
+  if(!confirm('让他给《'+stCur.title+'》写个结局?写完这个故事就封存了(不满意可以撤回)'))return;
+  stBusy=true;
+  stSetThinking(true);
+  const r=await stPost('/api/stories/'+stCur.id+'/end',{});
+  stBusy=false;
+  stSetThinking(false);
+  if(r.ok&&r.d&&r.d.waiting){stCur.ask='end';stRenderState();return}
+  if(!r.ok||!r.d||!r.d.him){alert((r.d&&r.d.error)||'结局他还没想好…');stRenderState();return}
+  stCur.log=[...(stCur.log||[]),r.d.him];stCur.status='ended';if(r.d.title)stCur.title=r.d.title;
+  document.getElementById('stRecap').classList.add('hide');
+  await stAppend(r.d.him,true);
+  stRenderState();
+  window.scrollTo(0,document.body.scrollHeight);
+}
+async function stNovel(rewrite){
+  if(!stCur||stBusy)return;
+  const box=document.getElementById('stNovelBox'),info=document.getElementById('stAfterInfo');
+  if(stCur.novel&&!rewrite){
+    document.getElementById('stNovel').textContent=stCur.novel;box.classList.remove('hide');stRenderState();
+    box.scrollIntoView({behavior:'smooth'});return;
+  }
+  stBusy=true;info.textContent='他在整理…(要半分钟)';
+  const r=await stPost('/api/stories/'+stCur.id+'/novel',{});
+  stBusy=false;info.textContent='';
+  if(!r.ok||!r.d||!r.d.novel){alert((r.d&&r.d.error)||'他写了一半揉掉了…');return}
+  stCur.novel=r.d.novel;
+  document.getElementById('stNovel').textContent=r.d.novel;box.classList.remove('hide');stRenderState();
+  box.scrollIntoView({behavior:'smooth'});
+}
+function stCopyNovel(){
+  const t=(stCur&&stCur.novel)||'';if(!t)return;
+  const ok=()=>{document.getElementById('stAfterInfo').textContent='复制好了';setTimeout(()=>document.getElementById('stAfterInfo').textContent='',1500)};
+  if(navigator.clipboard)navigator.clipboard.writeText(t).then(ok).catch(()=>alert('复制不了,长按选中吧'));
+  else alert('复制不了,长按选中吧');
+}
+async function stShare(){
+  if(!stCur||stBusy)return;
+  if(!confirm('让他以自己的名义发条动态,记下《'+stCur.title+'》?'))return;
+  const info=document.getElementById('stAfterInfo');
+  stBusy=true;info.textContent='他在写动态…';
+  const r=await stPost('/api/stories/'+stCur.id+'/share',{});
+  stBusy=false;info.textContent='';
+  if(!r.ok||!r.d||!r.d.moment){alert((r.d&&r.d.error)||'没发出去…');return}
+  stCur.shared_at=new Date().toISOString();stRenderState();
+  if(confirm('发好了:\n\n'+String(r.d.moment.content||'').slice(0,300)+'\n\n去动态看看?'))location.href='/moments.html';
+}
+// ═══ 念给你听: 他的声音(复用 /api/tts,默认关,省额度) ═══
+let stVoice=localStorage.getItem('bunny_story_voice')==='1',stCurVoice=null;
+function stVoiceApply(){
+  document.getElementById('stVoiceBtn').classList.toggle('on',stVoice);
+  document.getElementById('stVoiceBtn').textContent=stVoice?'🔈 念着':'🔈';
+  document.getElementById('stLog').classList.toggle('voice',stVoice);
+}
+function stVoiceToggle(){
+  stVoice=!stVoice;localStorage.setItem('bunny_story_voice',stVoice?'1':'0');stVoiceApply();
+  if(!stVoice&&stCurVoice)stCurVoice.stop();
+}
+function stSplitTTS(text){ // 中文标点断句,每段 ~120 字,服务端 400 字封顶
+  const parts=String(text||'').replace(/\s+/g,' ').split(/(?<=[。!?;…!?;])|(?<=[.!?])\s+/);
+  const chunks=[];let cur='';
+  for(const p of parts){if(!p)continue;if(cur&&(cur+p).length>120){chunks.push(cur);cur=p}else cur+=(cur?' ':'')+p}
+  if(cur.trim())chunks.push(cur);
+  const out=[];
+  for(let c of chunks.map(x=>x.trim()).filter(Boolean)){while(c.length>160){out.push(c.slice(0,120));c=c.slice(120)}out.push(c)}
+  return out;
+}
+async function stSpeak(btn,text){
+  if(stCurVoice){const same=stCurVoice.btn===btn;stCurVoice.stop();stCurVoice=null;if(same)return}
+  if(!text)return;
+  btn._blobs=btn._blobs||{}; // 合成过的缓存住,重播不再扣额度
+  let stopped=false,audio=null;
+  stCurVoice={btn,stop(){stopped=true;if(audio)try{audio.pause()}catch(e){};btn.classList.remove('playing');btn.textContent='念这段'}};
+  btn.classList.add('playing');btn.textContent='念着…';
+  for(const c of stSplitTTS(text)){
+    if(stopped)break;
+    let blob=btn._blobs[c];
+    if(!blob){
+      const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:c})}).catch(()=>null);
+      if(!r||!r.ok){stCurVoice.stop();stCurVoice=null;btn.textContent='声音没配好';setTimeout(()=>btn.textContent='念这段',2000);return}
+      blob=await r.blob();btn._blobs[c]=blob;
+    }
+    if(stopped)break;
+    await new Promise(res=>{audio=new Audio(URL.createObjectURL(blob));audio.onended=res;audio.onerror=res;audio.play().catch(res)});
+  }
+  if(stCurVoice&&stCurVoice.btn===btn){stCurVoice.stop();stCurVoice=null}
+}
+stVoiceApply();
+async function stShelve(){
+  if(!stCur||stBusy||!stCur.novel)return;
+  if(!confirm('把这篇放上书房的书架?你们就能在书房一起读,他也能在上面留批注'))return;
+  stBusy=true;
+  const r=await stPost('/api/stories/'+stCur.id+'/shelve',{});
+  stBusy=false;
+  if(!r.ok||!r.d||!r.d.book){alert((r.d&&r.d.error)||'没放上去…');return}
+  if(confirm('《'+r.d.book.title+'》放上书架了。去书房看看?'))go('book');
+}
+(function(){
+  const inp=document.getElementById('stChat');
+  document.getElementById('stChatBtn').onclick=()=>stSend('');
+  inp.onkeydown=e=>{if(e.key==='Enter')stSend('')};
+  document.getElementById('stRelayBtn').onclick=()=>stSend('');
 })();
 
 // 动态红点
