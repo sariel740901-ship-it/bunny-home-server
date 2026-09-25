@@ -182,6 +182,18 @@
         <input type="range" id="el-speed" min="0.5" max="2.0" step="0.1" value="1.0"
           style="width:100%" oninput="document.getElementById('el-speed-val').textContent=this.value+'x'">
       </div>
+      <div class="field">
+        <div class="field-label">说话 stability <span id="el-stability-val">0.6</span></div>
+        <input type="range" id="el-stability" min="0" max="1" step="0.05" value="0.6"
+          style="width:100%" oninput="document.getElementById('el-stability-val').textContent=this.value">
+        <div class="field-hint">v3 分三档：0 附近 Creative 最有表现力，0.5 Natural，1 Robust 最稳</div>
+      </div>
+      <div class="field">
+        <div class="field-label">唱歌 stability <span id="el-sing-stability-val">0</span></div>
+        <input type="range" id="el-sing-stability" min="0" max="1" step="0.05" value="0"
+          style="width:100%" oninput="document.getElementById('el-sing-stability-val').textContent=this.value">
+        <div class="field-hint">send_voice 开 sing 时用这一档，[singing] 标签在 Creative 档才放得开</div>
+      </div>
     </div>
 
     <!-- MiniMax -->
@@ -325,8 +337,8 @@
         voice_id: document.getElementById('el-voice').value,
         model_id: document.getElementById('el-model').value,
         speed: parseFloat(document.getElementById('el-speed').value),
-        stability: 0.5,
-        similarity_boost: 0.75
+        stability: parseFloat(document.getElementById('el-stability').value),
+        sing_stability: parseFloat(document.getElementById('el-sing-stability').value)
       },
       minimax: {
         api_key: document.getElementById('mm-key').value,
@@ -391,6 +403,14 @@
       if (cfg.tts_engine) switchEngine(cfg.tts_engine);
       if (cfg.elevenlabs?.voice_id) document.getElementById('el-voice').value = cfg.elevenlabs.voice_id;
       if (cfg.elevenlabs?.model_id) document.getElementById('el-model').value = cfg.elevenlabs.model_id;
+      const setRange = (id, v) => {
+        if (v === undefined || v === null) return;
+        const el = document.getElementById(id); el.value = v;
+        el.dispatchEvent(new Event('input'));
+      };
+      setRange('el-speed', cfg.elevenlabs?.speed);
+      setRange('el-stability', cfg.elevenlabs?.stability);
+      setRange('el-sing-stability', cfg.elevenlabs?.sing_stability);
       if (cfg.style?.sender_name) document.getElementById('sender-name').value = cfg.style.sender_name;
       if (cfg.style?.custom_css) document.getElementById('custom-css').value = cfg.style.custom_css;
     } catch(e) { /* first run, no config yet */ }
