@@ -36,7 +36,7 @@ CUSTOMIZE_PATH = BASE_DIR / "customize" / "index.html"
 WIDGET_JS_PATH = BASE_DIR / "dist" / "widget" / "voice-view-widget.global.js"
 
 # ── mcp-app widget identity ────────────────────────────────
-VOICE_VIEW_URI = "ui://voice-view/mcp-app-v8.html"
+VOICE_VIEW_URI = "ui://voice-view/mcp-app-v9.html"
 VOICE_VIEW_MIME = "text/html;profile=mcp-app"
 # All prior URIs are registered as aliases that return the SAME latest widget, so a
 # connector caching an old URI still gets the newest widget (no re-add / new address needed).
@@ -48,6 +48,7 @@ LEGACY_VIEW_URIS = [
     "ui://voice-view/mcp-app-v5.html",
     "ui://voice-view/mcp-app-v6.html",
     "ui://voice-view/mcp-app-v7.html",
+    "ui://voice-view/mcp-app-v8.html",
 ]
 
 # ── Config ─────────────────────────────────────────────────
@@ -235,8 +236,14 @@ def csp_meta(cfg: dict) -> dict:
     base = (cfg.get("public_base_url") or "").rstrip("/")
     origins = [base] if base else []
     return {
-        "ui": {"csp": {"resourceDomains": origins, "connectDomains": origins}},
+        # prefersBorder=False: 请宿主别在组件外面再画一圈边框(气泡自己就是边界)。
+        # 规范里宿主"可以"尊重这个声明,claude.ai 认不认以实际为准。
+        "ui": {
+            "csp": {"resourceDomains": origins, "connectDomains": origins},
+            "prefersBorder": False,
+        },
         "openai/widgetCSP": {"resource_domains": origins, "connect_domains": origins},
+        "openai/widgetPrefersBorder": False,
     }
 
 
