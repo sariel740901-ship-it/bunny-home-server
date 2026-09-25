@@ -36,7 +36,7 @@ CUSTOMIZE_PATH = BASE_DIR / "customize" / "index.html"
 WIDGET_JS_PATH = BASE_DIR / "dist" / "widget" / "voice-view-widget.global.js"
 
 # ── mcp-app widget identity ────────────────────────────────
-VOICE_VIEW_URI = "ui://voice-view/mcp-app-v7.html"
+VOICE_VIEW_URI = "ui://voice-view/mcp-app-v8.html"
 VOICE_VIEW_MIME = "text/html;profile=mcp-app"
 # All prior URIs are registered as aliases that return the SAME latest widget, so a
 # connector caching an old URI still gets the newest widget (no re-add / new address needed).
@@ -47,6 +47,7 @@ LEGACY_VIEW_URIS = [
     "ui://voice-view/mcp-app-v4.html",
     "ui://voice-view/mcp-app-v5.html",
     "ui://voice-view/mcp-app-v6.html",
+    "ui://voice-view/mcp-app-v7.html",
 ]
 
 # ── Config ─────────────────────────────────────────────────
@@ -275,6 +276,7 @@ class VoicePayload(BaseModel):
     bgImage: str = ""
     customCss: str = ""
     bars: list[float] = []
+    bubbleStyle: str = "waveform"  # "waveform" | "qq" — widget picks the layout
 
 
 def _audio_url(audio: bytes, mime: str, text: str, cfg: dict, sing: bool = False) -> str:
@@ -494,6 +496,7 @@ async def send_voice(text: str, sing: bool = False) -> VoicePayload:
         barCount=int(style["bar_count"]),
         bgImage=style.get("bg_image", ""),
         customCss=style.get("custom_css", ""),
+        bubbleStyle=style.get("bubble_style", "waveform"),
     )
 
 
@@ -504,6 +507,7 @@ async def send_voice(text: str, sing: bool = False) -> VoicePayload:
         "stability / sing_stability 只对 ElevenLabs 生效，取值 0~1："
         "0 附近最有表现力(Creative，唱歌用)，0.5 自然(Natural)，1 最稳(Robust)。"
         "stability 是平时说话用的，sing_stability 是 send_voice 开 sing 时用的。"
+        "bubble_style 可选 waveform（深色卡片+真实波形）或 qq（QQ 风格实色气泡）。"
     ),
 )
 async def voice_config(
@@ -528,7 +532,7 @@ async def voice_config(
         cfg["style"]["color_primary"] = color_primary; changed = True
     if sender_name:
         cfg["style"]["sender_name"] = sender_name; changed = True
-    if bubble_style in ("wechat", "fancy", "waveform"):
+    if bubble_style in ("wechat", "fancy", "waveform", "qq"):
         cfg["style"]["bubble_style"] = bubble_style; changed = True
     if changed:
         save_config(cfg)
