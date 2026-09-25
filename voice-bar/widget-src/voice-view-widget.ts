@@ -19,6 +19,7 @@ interface VoiceData {
   bgImage: string;           // optional skin background image URL ("" = default gradient skin)
   customCss: string;         // optional user CSS injected into the widget (data-driven, live)
   bars: number[];            // real waveform peaks (0-1) from the audio; [] = default shape
+  bubbleStyle: string;       // "waveform" (default skin card) | "qq" (QQ-style solid bubble)
 }
 
 declare global {
@@ -44,7 +45,8 @@ function coerce(data: unknown): VoiceData | null {
     barCount: num(d.barCount, 28),
     bgImage: str(d.bgImage, ""),
     customCss: str(d.customCss, ""),
-    bars: Array.isArray(d.bars) ? (d.bars as unknown[]).map((x) => (typeof x === "number" ? x : 0)) : []
+    bars: Array.isArray(d.bars) ? (d.bars as unknown[]).map((x) => (typeof x === "number" ? x : 0)) : [],
+    bubbleStyle: str(d.bubbleStyle, "waveform")
   };
 }
 
@@ -62,22 +64,163 @@ function fmtTime(secs: number): string {
   return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 }
 
-function render(data: VoiceData, platform: "chatgpt" | "claude") {
-  rendered = true;
-  const root = document.getElementById("root");
-  if (!root) return;
-  root.innerHTML = "";
-
-  // Live custom CSS (data-driven — editing it in /customize takes effect on the next
-  // voice with no widget reload). Users target #vc-card / #vc-bubble / #vc-wave etc.
+/** Inject the user's live custom CSS (edited in /customize; applies on the next voice). */
+function applyCustomCss(css: string) {
   let styleEl = document.getElementById("vc-custom-css") as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = document.createElement("style");
     styleEl.id = "vc-custom-css";
     document.head.appendChild(styleEl);
   }
-  styleEl.textContent = data.customCss || "";
+  styleEl.textContent = css || "";
+}
 
+/** Report only HEIGHT to the host (width is fixed by host = full width). */
+function reportHeight(card: HTMLElement, platform: "chatgpt" | "claude") {
+  if (platform !== "claude") return;
+  const reportH = () => {
+    const h = Math.ceil(card.getBoundingClientRect().height);
+    if (h <= 0) return;
+    document.documentElement.style.height = h + "px";
+    document.body.style.height = h + "px";
+    if (appRef) {
+      try {
+        appRef.sendSizeChanged({ width: Math.ceil(window.innerWidth), height: h });
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+  requestAnimationFrame(() => {
+    reportH();
+    requestAnimationFrame(reportH);
+    setTimeout(reportH, 200);
+  });
+}
+
+function render(data: VoiceData, platform: "chatgpt" | "claude") {
+  rendered = true;
+  const root = document.getElementById("root");
+  if (!root) return;
+  root.innerHTML = "";
+  applyCustomCss(data.customCss);
+  if (data.bubbleStyle === "qq") renderQQ(root, data, platform);
+  else renderWaveform(root, data, platform);
+}
+
+/**
+ * QQ-style bubble: a solid-colour speech bubble with a little tail on the left, the
+ * classic speaker-with-three-arcs icon, the duration as 22'' on the right, and a red
+ * "unplayed" dot after the bubble. Bubble width grows with duration (like QQ), and the
+ * three arcs light up one after another while playing. Sits on a transparent background
+ * so it reads as a chat bubble rather than a card.
+ */
+function renderQQ(root: HTMLElement, data: VoiceData, platform: "chatgpt" | "claude") {
+  const card = document.createElement("div");
+  card.id = "vc-card";
+  card.style.cssText = `
+    position:relative; box-sizing:border-box; width:100%; padding:2px 8px 6px 10px;
+    background:transparent; overflow:hidden;
+    font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei UI",sans-serif;`;
+
+  // nickname above the bubble (QQ group-chat style)
+  const nameEl = document.createElement("div");
+  nameEl.id = "vc-name";
+  nameEl.textContent = data.senderName;
+  nameEl.style.cssText = `font-size:11px; line-height:14px; color:#8e8e93; margin:0 0 4px 10px;
+    pointer-events:none;`;
+  card.appendChild(nameEl);
+
+  const row = document.createElement("div");
+  row.id = "vc-row";
+  row.style.cssText = "display:flex; align-items:center; gap:8px;";
+
+  // width follows duration: ~88px for a 1s clip, +6px per second, capped like QQ does
+  const w = Math.round(Math.max(88, Math.min(260, 88 + data.duration * 6)));
+  const bubble = document.createElement("div");
+  bubble.id = "vc-bubble";
+  bubble.style.cssText = `
+    position:relative; box-sizing:border-box; display:flex; align-items:center;
+    justify-content:space-between; width:${w}px; height:40px; padding:0 14px 0 12px;
+    background:${data.colorPrimary}; color:#fff; border-radius:12px;
+    box-shadow:0 1px 2px rgba(0,0,0,0.12); cursor:pointer; user-select:none;`;
+
+  // the little tail pointing at the avatar side
+  const tail = document.createElement("div");
+  tail.id = "vc-tail";
+  tail.style.cssText = `position:absolute; left:-4px; top:13px; width:10px; height:10px;
+    background:${data.colorPrimary}; border-radius:2px; transform:rotate(45deg); pointer-events:none;`;
+  bubble.appendChild(tail);
+
+  // speaker + three arcs (arcs are separate paths so they can animate one by one)
+  const icon = document.createElement("div");
+  icon.id = "vc-play";
+  icon.style.cssText = "width:20px; height:20px; flex-shrink:0; display:flex; align-items:center;";
+  icon.innerHTML =
+    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="M4 10.5v3a1 1 0 0 0 1 1h1.6l3.2 2.6V6.9L6.6 9.5H5a1 1 0 0 0-1 1z" fill="#fff"/>` +
+    `<path class="arc" d="M13.5 9.6a3.4 3.4 0 0 1 0 4.8"/>` +
+    `<path class="arc" d="M16 7.3a6.6 6.6 0 0 1 0 9.4"/>` +
+    `<path class="arc" d="M18.5 5a10 10 0 0 1 0 14"/>` +
+    `</svg>`;
+  const arcs = Array.from(icon.querySelectorAll(".arc")) as SVGElement[];
+
+  const durEl = document.createElement("span");
+  durEl.id = "vc-dur";
+  durEl.textContent = data.duration + "''";
+  durEl.style.cssText = "font-size:14px; line-height:1; color:#fff; font-variant-numeric:tabular-nums;";
+
+  const audio = document.createElement("audio");
+  audio.preload = "auto";
+  audio.src = data.audioUrl;
+
+  bubble.append(icon, durEl, audio);
+
+  // unread dot — QQ shows it until the voice has been played once
+  const dot = document.createElement("div");
+  dot.id = "vc-dot";
+  dot.style.cssText = "width:8px; height:8px; border-radius:50%; background:#fa5151; flex-shrink:0;";
+
+  row.append(bubble, dot);
+  card.appendChild(row);
+  root.appendChild(card);
+
+  // ── Playback: arcs light up 1 → 2 → 3 in a loop while playing ──
+  let playing = false;
+  let timer = 0;
+  let step = 0;
+  const setArcs = (lit: number) => arcs.forEach((a, i) => (a.style.opacity = i < lit ? "1" : "0.35"));
+  const idle = () => arcs.forEach((a) => (a.style.opacity = "1"));
+  const animate = () => {
+    step = (step + 1) % 3;
+    setArcs(step + 1);
+  };
+  const stop = () => {
+    playing = false;
+    clearInterval(timer);
+    idle();
+  };
+  const toggle = () => {
+    if (playing) {
+      audio.pause();
+      stop();
+    } else {
+      audio.play().then(() => {
+        playing = true;
+        dot.style.display = "none";
+        step = 0;
+        setArcs(1);
+        timer = window.setInterval(animate, 300);
+      }).catch((e) => console.warn("[voice] playback failed:", e));
+    }
+  };
+  bubble.addEventListener("click", toggle);
+  audio.addEventListener("ended", stop);
+
+  reportHeight(card, platform);
+}
+
+function renderWaveform(root: HTMLElement, data: VoiceData, platform: "chatgpt" | "claude") {
   // ── Full-width skin card (fills the host iframe → no white gap) ──
   const card = document.createElement("div");
   card.id = "vc-card";
@@ -231,27 +374,7 @@ function render(data: VoiceData, platform: "chatgpt" | "claude") {
     timeEl.textContent = "0:00";
   });
 
-  // ── Report only HEIGHT to the host (width is fixed by host = full skin width) ──
-  if (platform === "claude") {
-    const reportH = () => {
-      const h = Math.ceil(card.getBoundingClientRect().height);
-      if (h <= 0) return;
-      document.documentElement.style.height = h + "px";
-      document.body.style.height = h + "px";
-      if (appRef) {
-        try {
-          appRef.sendSizeChanged({ width: Math.ceil(window.innerWidth), height: h });
-        } catch {
-          /* ignore */
-        }
-      }
-    };
-    requestAnimationFrame(() => {
-      reportH();
-      requestAnimationFrame(reportH);
-      setTimeout(reportH, 200);
-    });
-  }
+  reportHeight(card, platform);
 }
 
 function showError(msg: string) {

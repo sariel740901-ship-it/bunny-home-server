@@ -231,16 +231,20 @@
     <div class="field">
       <div class="field-label">样式</div>
       <div class="style-grid">
-        <div class="style-card" onclick="selectStyle(this,'wechat')">
+        <div class="style-card" data-style="wechat" onclick="selectStyle(this,'wechat')">
           <div class="icon">💬</div>微信经典
         </div>
-        <div class="style-card selected" onclick="selectStyle(this,'waveform')">
+        <div class="style-card selected" data-style="waveform" onclick="selectStyle(this,'waveform')">
           <div class="icon">🎵</div>波形进度
         </div>
-        <div class="style-card" onclick="selectStyle(this,'fancy')">
+        <div class="style-card" data-style="fancy" onclick="selectStyle(this,'fancy')">
           <div class="icon">✨</div>暗调质感
         </div>
+        <div class="style-card" data-style="qq" onclick="selectStyle(this,'qq')">
+          <div class="icon">🐧</div>QQ 气泡
+        </div>
       </div>
+      <div class="field-hint">目前真正生效的是「波形进度」和「QQ 气泡」两种，另两种暂未实现，选了等同于波形进度</div>
     </div>
 
     <div class="field">
@@ -401,6 +405,9 @@
       if (!resp.ok) return;
       const cfg = await resp.json();
       if (cfg.tts_engine) switchEngine(cfg.tts_engine);
+      // 回填气泡样式,否则一点保存就被重置成 waveform
+      const styleCard = document.querySelector(`.style-card[data-style="${cfg.style?.bubble_style}"]`);
+      if (styleCard) selectStyle(styleCard, cfg.style.bubble_style);
       if (cfg.elevenlabs?.voice_id) document.getElementById('el-voice').value = cfg.elevenlabs.voice_id;
       if (cfg.elevenlabs?.model_id) document.getElementById('el-model').value = cfg.elevenlabs.model_id;
       const setRange = (id, v) => {
