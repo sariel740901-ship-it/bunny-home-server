@@ -73,6 +73,14 @@ https://voice.jiakeparents.top/mcp?key=你的暗号
 - 连接器全端共享,手机也能让他发语音
 - 手机 App 如果渲染不出气泡:让他把 `audioUrl` 链接发出来,点开浏览器播放(工具说明里已教过他)
 
+## 让他唱歌 🎵
+
+`eleven_v3` 支持方括号音频标签(`[singing]`、`[laughs]`、`[whispers]`……)。
+`send_voice` 多了一个 `sing` 参数:开着时会自动补 `[singing]` 标签,并把 stability
+切到 `sing_stability`(默认 0,Creative 档,标签才放得开;平时说话仍用 `stability`)。
+对话里直接说"给我唱一段月亮代表我的心"就行。两档 stability 都能在换皮肤页或用
+`voice_config` 工具调。MiniMax 引擎没有唱歌模式。
+
 ## 换皮肤
 
 浏览器开 `http://localhost:8081/customize`(本机)改配色/名字/CSS,保存即时生效。

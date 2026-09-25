@@ -5,6 +5,7 @@ MCP-UI / mcp-app widget mechanism. TTS via ElevenLabs (& MiniMax).
 """
 
 import os
+import re
 import json
 import base64
 import hashlib
@@ -64,6 +65,9 @@ DEFAULT_CONFIG = {
         "voice_id": "",
         "model_id": "eleven_v3",
         "stability": 0.6,
+        # 唱歌时用的 stability。v3 的 stability 实际是三档: 0=Creative / 0.5=Natural / 1=Robust,
+        # [singing] 这类表情标签只有在 Creative 档才放得开,所以唱歌单独给一档。
+        "sing_stability": 0.0,
         "similarity_boost": 0.8,
         "speed": 0.9,
     },
@@ -115,15 +119,24 @@ def save_config(cfg: dict):
 
 # ── TTS Engines ────────────────────────────────────────────
 
-async def tts_elevenlabs(text: str, cfg: dict) -> bytes:
+SING_TAG_RE = re.compile(r"\[(sing|sings|singing)\]", re.I)
+
+
+def prepare_sing_text(text: str) -> str:
+    """唱歌模式: 文本里没写 [singing] 标签就在开头补一个,让 v3 知道整段都要唱。"""
+    return text if SING_TAG_RE.search(text) else "[singing] " + text
+
+
+async def tts_elevenlabs(text: str, cfg: dict, sing: bool = False) -> bytes:
     el = cfg["elevenlabs"]
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{el['voice_id']}"
     headers = {"xi-api-key": el["api_key"], "Content-Type": "application/json", "Accept": "audio/mpeg"}
+    stability = el.get("sing_stability", 0.0) if sing else el["stability"]
     payload = {
-        "text": text,
+        "text": prepare_sing_text(text) if sing else text,
         "model_id": el["model_id"],
         "voice_settings": {
-            "stability": el["stability"],
+            "stability": stability,
             "similarity_boost": el["similarity_boost"],
             "speed": el.get("speed", 1.0),
         },
@@ -156,9 +169,10 @@ async def tts_minimax(text: str, cfg: dict) -> bytes:
             return base64.b64decode(b64)
 
 
-async def generate_speech(text: str, cfg: dict) -> tuple[bytes, str]:
+async def generate_speech(text: str, cfg: dict, sing: bool = False) -> tuple[bytes, str]:
     engine = cfg.get("tts_engine", "elevenlabs")
-    audio = await (tts_minimax(text, cfg) if engine == "minimax" else tts_elevenlabs(text, cfg))
+    # MiniMax 没有唱歌模式,sing 只对 ElevenLabs 生效
+    audio = await (tts_minimax(text, cfg) if engine == "minimax" else tts_elevenlabs(text, cfg, sing))
     return audio, "audio/mpeg"
 
 
@@ -263,13 +277,17 @@ class VoicePayload(BaseModel):
     bars: list[float] = []
 
 
-def _audio_url(audio: bytes, mime: str, text: str, cfg: dict) -> str:
+def _audio_url(audio: bytes, mime: str, text: str, cfg: dict, sing: bool = False) -> str:
     """Return an https URL (writing the file) when public_base_url is set, else a data: URI."""
     base = (cfg.get("public_base_url") or "").rstrip("/")
     if not base:
         return f"data:{mime};base64,{base64.b64encode(audio).decode()}"
+    engine = cfg.get("tts_engine", "")
+    eng_cfg = cfg.get(engine, {})
+    # 同一句话说/唱、不同 stability 出来的音频不一样,都要进 key,否则会命中旧文件
+    stability = eng_cfg.get("sing_stability", 0.0) if sing else eng_cfg.get("stability", "")
     key = hashlib.sha1(
-        f"{text}|{cfg.get('tts_engine')}|{cfg.get(cfg.get('tts_engine',''),{}).get('voice_id','')}".encode()
+        f"{text}|{engine}|{eng_cfg.get('voice_id','')}|{'sing' if sing else 'speak'}|{stability}".encode()
     ).hexdigest()[:20]
     name = key + ".mp3"
     audio_dir = Path(cfg.get("audio_dir") or (BASE_DIR / "audio"))
@@ -443,21 +461,29 @@ async def send_sticker(name: str) -> StickerPayload:
 
 @mcp.tool(
     name="send_voice",
-    description="发送一条语音消息。输入要说的话，会用小克的音色生成语音，并在聊天里渲染成一条可播放的语音条气泡。如果她说在手机上看不到语音条，把返回结果里的 audioUrl 链接直接发给她，点开即可播放。",
+    description=(
+        "发送一条语音消息。输入要说的话，会用小克的音色生成语音，并在聊天里渲染成一条可播放的语音条气泡。"
+        "支持 ElevenLabs v3 音频标签：在文本里用方括号写 [laughs]、[whispers]、[sighs]、[excited] 等，"
+        "可以控制语气。想唱歌就把 sing 设为 true 并传歌词（多行歌词用换行分开），"
+        "会自动切到更放得开的声音设置并加上 [singing] 标签，例如 text=\"月亮代表我的心\\n你问我爱你有多深\", sing=true。"
+        "如果她说在手机上看不到语音条，把返回结果里的 audioUrl 链接直接发给她，点开即可播放。"
+    ),
     meta=WIDGET_META,
 )
-async def send_voice(text: str) -> VoicePayload:
+async def send_voice(text: str, sing: bool = False) -> VoicePayload:
     cfg = load_config()
     engine = cfg.get("tts_engine", "elevenlabs")
     if not cfg.get(engine, {}).get("api_key"):
         raise Exception(f"{engine} 的 API key 还没配置，请打开 /voice-config/customize 填写。")
 
-    audio, mime = await generate_speech(text, cfg)
+    audio, mime = await generate_speech(text, cfg, sing)
     style = cfg["style"]
     speed = cfg.get(engine, {}).get("speed", 1.0)
     duration = estimate_duration(text, speed)
+    if sing:
+        duration = round(duration * 1.5)  # 唱比说慢,气泡时长按经验放大一点
     return VoicePayload(
-        audioUrl=_audio_url(audio, mime, text, cfg),
+        audioUrl=_audio_url(audio, mime, text, cfg, sing),
         duration=duration,
         bars=extract_waveform(audio, wave_bar_count(duration)),
         senderName=style["sender_name"],
@@ -471,17 +497,33 @@ async def send_voice(text: str) -> VoicePayload:
     )
 
 
-@mcp.tool(name="voice_config", description="查看或修改语音条配置。不传参数则返回当前配置。")
+@mcp.tool(
+    name="voice_config",
+    description=(
+        "查看或修改语音条配置。不传参数则返回当前配置。"
+        "stability / sing_stability 只对 ElevenLabs 生效，取值 0~1："
+        "0 附近最有表现力(Creative，唱歌用)，0.5 自然(Natural)，1 最稳(Robust)。"
+        "stability 是平时说话用的，sing_stability 是 send_voice 开 sing 时用的。"
+    ),
+)
 async def voice_config(
     tts_engine: str = None,
     color_primary: str = None,
     sender_name: str = None,
     bubble_style: str = None,
+    stability: float = None,
+    sing_stability: float = None,
 ) -> str:
     cfg = load_config()
     changed = False
     if tts_engine in ("elevenlabs", "minimax"):
         cfg["tts_engine"] = tts_engine; changed = True
+    for key, val in (("stability", stability), ("sing_stability", sing_stability)):
+        if val is None:
+            continue
+        if not 0.0 <= float(val) <= 1.0:
+            raise Exception(f"{key} 取值范围是 0~1，收到 {val}")
+        cfg["elevenlabs"][key] = float(val); changed = True
     if color_primary:
         cfg["style"]["color_primary"] = color_primary; changed = True
     if sender_name:
@@ -490,7 +532,11 @@ async def voice_config(
         cfg["style"]["bubble_style"] = bubble_style; changed = True
     if changed:
         save_config(cfg)
-        return f"配置已更新\n引擎: {cfg['tts_engine']}\n气泡: {cfg['style']['bubble_style']}\n配色: {cfg['style']['color_primary']}"
+        el = cfg["elevenlabs"]
+        return (
+            f"配置已更新\n引擎: {cfg['tts_engine']}\n气泡: {cfg['style']['bubble_style']}\n配色: {cfg['style']['color_primary']}"
+            f"\n说话 stability: {el.get('stability')}\n唱歌 stability: {el.get('sing_stability', 0.0)}"
+        )
     safe = json.loads(json.dumps(cfg))
     for eng in ("elevenlabs", "minimax"):
         if safe.get(eng, {}).get("api_key"):
