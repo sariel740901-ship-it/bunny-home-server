@@ -91,7 +91,7 @@ docker compose up -d
    `DASHBOARD_PUBLIC_BASE_URL=https://xinchao.jiakeparents.top`、
    `DASHBOARD_ACCESS_TOKEN=<新生成的随机串,和 SERVICE_TOKEN 不同>`
 2. `docker compose -f compose.solo.yaml up -d` 重建
-3. bunny(Vercel)环境变量加 `XINCHAO_DASHBOARD_TOKEN=<同一串>`,重新部署
+3. bunny(Render)环境变量加 `XINCHAO_DASHBOARD_TOKEN=<同一串>`,Render 会自动重新部署
 4. 打开小屋页: 信箱区块出现输入框就通了;只配了 1-2 没配 3 的话,信箱只能看不能写
 
 ## 补档: 2026-09 的性格自评
