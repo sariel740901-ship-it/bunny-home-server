@@ -123,6 +123,24 @@ def save_config(cfg: dict):
 
 SING_TAG_RE = re.compile(r"\[(sing|sings|singing)\]", re.I)
 
+# ElevenLabs 可选模型。v4 系列的 voice_settings 只认 stability / similarity_boost,
+# 传 speed 会被拒,所以按模型决定要不要带 speed。
+ELEVEN_MODELS = {
+    "eleven_v4": "v4(最新,标签最听话,中文/粤语提升)",
+    "eleven_v4_turbo": "v4 Turbo(低延迟版)",
+    "eleven_v3": "v3(支持音频标签)",
+    "eleven_multilingual_v2": "Multilingual v2(无标签)",
+    "eleven_turbo_v2_5": "Turbo v2.5",
+    "eleven_flash_v2_5": "Flash v2.5",
+}
+
+
+def eleven_voice_settings(el: dict, stability: float) -> dict:
+    vs = {"stability": stability, "similarity_boost": el["similarity_boost"]}
+    if not str(el.get("model_id", "")).startswith("eleven_v4"):
+        vs["speed"] = el.get("speed", 1.0)
+    return vs
+
 
 def prepare_sing_text(text: str) -> str:
     """唱歌模式: 文本里没写 [singing] 标签就在开头补一个,让 v3 知道整段都要唱。"""
@@ -137,11 +155,7 @@ async def tts_elevenlabs(text: str, cfg: dict, sing: bool = False) -> bytes:
     payload = {
         "text": prepare_sing_text(text) if sing else text,
         "model_id": el["model_id"],
-        "voice_settings": {
-            "stability": stability,
-            "similarity_boost": el["similarity_boost"],
-            "speed": el.get("speed", 1.0),
-        },
+        "voice_settings": eleven_voice_settings(el, stability),
     }
     async with aiohttp.ClientSession() as s:
         async with s.post(url, json=payload, headers=headers) as r:
@@ -296,7 +310,7 @@ def _audio_url(audio: bytes, mime: str, text: str, cfg: dict, sing: bool = False
     # 同一句话说/唱、不同 stability 出来的音频不一样,都要进 key,否则会命中旧文件
     stability = eng_cfg.get("sing_stability", 0.0) if sing else eng_cfg.get("stability", "")
     key = hashlib.sha1(
-        f"{text}|{engine}|{eng_cfg.get('voice_id','')}|{'sing' if sing else 'speak'}|{stability}".encode()
+        f"{text}|{engine}|{eng_cfg.get('model_id','')}|{eng_cfg.get('voice_id','')}|{'sing' if sing else 'speak'}|{stability}".encode()
     ).hexdigest()[:20]
     name = key + ".mp3"
     audio_dir = Path(cfg.get("audio_dir") or (BASE_DIR / "audio"))
@@ -515,6 +529,8 @@ async def send_voice(text: str, sing: bool = False) -> VoicePayload:
         "0 附近最有表现力(Creative，唱歌用)，0.5 自然(Natural)，1 最稳(Robust)。"
         "stability 是平时说话用的，sing_stability 是 send_voice 开 sing 时用的。"
         "bubble_style 可选 waveform（深色卡片+真实波形）或 qq（QQ 风格实色气泡）。"
+        "model_id 切换 ElevenLabs 模型：eleven_v4 / eleven_v4_turbo / eleven_v3 / "
+        "eleven_multilingual_v2 / eleven_turbo_v2_5 / eleven_flash_v2_5。"
     ),
 )
 async def voice_config(
@@ -524,9 +540,14 @@ async def voice_config(
     bubble_style: str = None,
     stability: float = None,
     sing_stability: float = None,
+    model_id: str = None,
 ) -> str:
     cfg = load_config()
     changed = False
+    if model_id is not None:
+        if model_id not in ELEVEN_MODELS:
+            raise Exception(f"不认识的模型 {model_id}，可选: {', '.join(ELEVEN_MODELS)}")
+        cfg["elevenlabs"]["model_id"] = model_id; changed = True
     if tts_engine in ("elevenlabs", "minimax"):
         cfg["tts_engine"] = tts_engine; changed = True
     for key, val in (("stability", stability), ("sing_stability", sing_stability)):
@@ -546,6 +567,7 @@ async def voice_config(
         el = cfg["elevenlabs"]
         return (
             f"配置已更新\n引擎: {cfg['tts_engine']}\n气泡: {cfg['style']['bubble_style']}\n配色: {cfg['style']['color_primary']}"
+            f"\n模型: {el.get('model_id')}"
             f"\n说话 stability: {el.get('stability')}\n唱歌 stability: {el.get('sing_stability', 0.0)}"
         )
     safe = json.loads(json.dumps(cfg))
