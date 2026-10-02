@@ -1,31 +1,59 @@
 @echo off
-chcp 65001 >nul
-rem å¤‡ä»½å°å…‹çš„å¿ƒ(3.x ç‰ˆ) â€”â€” å¿ƒç»ªå²+æ¢¦+æ€§æ ¼å†…æ ¸+é”šç‚¹+å°å±‹,å…¨æ”¶è¿› jiake-memory ä¿é™©ç®±ã€‚
-rem æ¯ä¸€æ­¥å¤±è´¥éƒ½ä¼šæ˜è¯´,git çš„è¾“å‡ºä¸å†éšè—,æ–¹ä¾¿çœ‹å‡ºæ­»åœ¨å“ªä¸€æ­¥ã€‚
+rem ±¾ÎÄ¼ş°´ GBK ±àÂë±£´æ(ÖĞÎÄ Windows µÄ cmd ĞèÒª),GitHub ÍøÒ³ÉÏ¿´×ÅÊÇÂÒÂë,Õı³£¡£
+rem ±¸·İĞ¡¿ËµÄĞÄ(3.x °æ): ĞÄĞ÷Ê·+ÃÎ+ĞÔ¸ñÄÚºË+Ãªµã+Ğ¡Îİ,È«ÊÕ½ø jiake-memory ±£ÏÕÏä¡£
+rem Ã¿Ò»²½Ê§°Ü¶¼»áÃ÷Ëµ,git µÄÊä³ö²»Òş²Ø;ÍÆËÍÓÀÔ¶Ö´ĞĞ,±¾µØÔÜ×ÅÃ»ÍÆÉÏÈ¥µÄÌá½»Ò²»áÒ»²¢ÍÆ¡£
 set XINCHAO=C:\Users\23803\xinchao-nian
 set VAULT=C:\Users\23803\jiake-memory
 
 if not exist "%XINCHAO%\state\state.json" (
-  echo ! æ²¡æ‰¾åˆ° %XINCHAO%\state\state.json
-  echo   å¿ƒæ½® 3.x çš„ç›®å½•ä¸å« xinchao-nian çš„è¯,æ”¹ä¸€ä¸‹æœ¬æ–‡ä»¶é¡¶éƒ¨çš„ XINCHAO è·¯å¾„
-  pause & exit /b 1
+  echo ! Ã»ÕÒµ½ %XINCHAO%\state\state.json
+  echo   ĞÄ³± 3.x µÄÄ¿Â¼²»½Ğ xinchao-nian µÄ»°,¸ÄÒ»ÏÂ±¾ÎÄ¼ş¶¥²¿µÄ XINCHAO Â·¾¶
+  pause
+  exit /b 1
 )
 if not exist "%VAULT%\.git" (
-  echo ! æ²¡æ‰¾åˆ°ä¿é™©ç®± %VAULT% ^(è¦å…ˆ git clone jiake-memory åˆ°è¿™é‡Œ^)
-  pause & exit /b 1
+  echo ! Ã»ÕÒµ½±£ÏÕÏä %VAULT% ,ÒªÏÈ°Ñ jiake-memory ¿ËÂ¡µ½ÕâÀï
+  pause
+  exit /b 1
 )
 if not exist "%VAULT%\xinchao" mkdir "%VAULT%\xinchao"
-copy /y "%XINCHAO%\state\state.json" "%VAULT%\xinchao\state.json" >nul || (echo ! å¤åˆ¶ state.json å¤±è´¥ & pause & exit /b 1)
+copy /y "%XINCHAO%\state\state.json" "%VAULT%\xinchao\state.json" >nul
+if errorlevel 1 (
+  echo ! ¸´ÖÆ state.json Ê§°Ü
+  pause
+  exit /b 1
+)
 if exist "%XINCHAO%\state\transitions.jsonl" copy /y "%XINCHAO%\state\transitions.jsonl" "%VAULT%\xinchao\transitions.jsonl" >nul
 if exist "%XINCHAO%\state\personality.json" copy /y "%XINCHAO%\state\personality.json" "%VAULT%\xinchao\personality.json" >nul
 if exist "%XINCHAO%\state\cabin.json" copy /y "%XINCHAO%\state\cabin.json" "%VAULT%\xinchao\cabin.json" >nul
-echo - æ–‡ä»¶å·²å¤åˆ¶åˆ° %VAULT%\xinchao
+echo - ÎÄ¼şÒÑ¸´ÖÆµ½ %VAULT%\xinchao
 
 cd /d "%VAULT%"
-git add xinchao || (echo ! git add å¤±è´¥ & pause & exit /b 1)
-git diff --cached --quiet && (echo - å’Œä¸Šæ¬¡å¤‡ä»½ä¸€æ ·,æ²¡æœ‰æ–°å†…å®¹,ä¸ç”¨æäº¤ & goto done)
-git -c user.name="xinchao-backup" -c user.email="xinchao-backup@jiake.local" commit -q -m "xinchao state backup %date% %time%" || (echo ! git commit å¤±è´¥ & pause & exit /b 1)
-echo - å·²æäº¤,æ­£åœ¨æ¨é€åˆ° GitHubâ€¦
-git push || (echo ! git push å¤±è´¥ ^(å¤šåŠæ˜¯ GitHub ç™»å½•è¿‡æœŸ,é‡æ–° git clone ä¸€æ¬¡ jiake-memory ä¼šé‡æ–°ç™»å½•^) & pause & exit /b 1)
-:done
-echo âœ“ å°å…‹çš„å¿ƒå·²å¤‡ä»½ (%date% %time%)
+rem ÕâĞ© JSON Ô­Ñù±£´æ,²»×ö»»ĞĞ×ª»»,Ê¡µÃÃ¿´Î¶¼Ë¢Ò»ÆÁ CRLF ¾¯¸æ
+git config core.autocrlf false
+git add xinchao
+if errorlevel 1 (
+  echo ! git add Ê§°Ü
+  pause
+  exit /b 1
+)
+git diff --cached --quiet
+if errorlevel 1 (
+  git -c user.name="xinchao-backup" -c user.email="xinchao-backup@jiake.local" commit -q -m "xinchao state backup %date% %time%"
+  if errorlevel 1 (
+    echo ! git commit Ê§°Ü
+    pause
+    exit /b 1
+  )
+  echo - ÒÑÌá½»
+) else (
+  echo - ºÍÉÏ´Î±¸·İÒ»Ñù,Ã»ÓĞĞÂÄÚÈİ
+)
+echo - ÕıÔÚÍÆËÍµ½ GitHub...
+git push
+if errorlevel 1 (
+  echo ! git push Ê§°Ü¡£¶à°ëÊÇ GitHub µÇÂ¼¹ıÆÚ,ÖØĞÂ git clone Ò»´Î jiake-memory »áÖØĞÂµÇÂ¼
+  pause
+  exit /b 1
+)
+echo OK Ğ¡¿ËµÄĞÄÒÑ±¸·İ %date% %time%
