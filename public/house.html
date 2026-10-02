@@ -77,6 +77,27 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
 .starcard h2{font-family:var(--serif);font-size:15px;font-weight:500;letter-spacing:.4px}
 .starcard p{font-size:12px;color:rgba(232,228,218,.65);margin-top:4px}
 .starcard .stars{position:absolute;inset:0;pointer-events:none}
+/* 小屋信箱 */
+.note{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:9px;background:var(--bg2)}
+.note.ai{background:var(--dream-bg);border-color:var(--dream-border)}
+.note .nh{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);margin-bottom:4px}
+.note .nh b{font-weight:500;color:var(--text)}
+.note .nh .lk{margin-left:auto;border:none;background:none;color:var(--muted);font-size:11px;cursor:pointer;font-family:inherit;padding:2px 4px}
+.note .nh .lk.on{color:var(--accent)}
+.note .nb{font-family:var(--serif);font-size:13.5px;line-height:1.8;white-space:pre-wrap;word-break:break-word}
+.note.ai .nb{color:var(--dream-text)}
+.note .unread{width:7px;height:7px;border-radius:50%;background:#e0524d;display:inline-block}
+.notescroll{max-height:300px;overflow-y:auto;overscroll-behavior:contain;padding-right:3px}
+.notescroll::-webkit-scrollbar{width:4px}
+.notescroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.write{margin-top:10px;border-top:1px dashed var(--border);padding-top:10px}
+.write textarea{width:100%;min-height:76px;resize:vertical;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);font:13.5px/1.7 var(--serif);padding:9px 11px;outline:none}
+.write textarea:focus{border-color:var(--accent)}
+.write .row{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12px;color:var(--muted)}
+.write .row label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.write .row button{margin-left:auto;border:none;border-radius:999px;background:var(--accent);color:#fff;font-size:12.5px;padding:7px 16px;cursor:pointer;font-family:inherit}
+.write .row button:disabled{opacity:.5;cursor:default}
+.write .hint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6}
 .empty{color:var(--muted);font-size:12.5px;font-style:italic;font-family:var(--serif)}
 .hide{display:none !important}
 
@@ -102,6 +123,19 @@ body{font-family:-apple-system,'PingFang SC','HarmonyOS Sans SC','MiSans',BlinkM
     <div id="moodBody" class="kv empty">正在感应…</div>
     <div class="fold"><div id="moodMore" class="kv"></div></div>
     <button class="foldbtn hide" id="moodFold" onclick="document.getElementById('moodSec').classList.toggle('open')">具体的心情 <span class="chev">▼</span></button>
+  </div>
+
+  <div class="sec" id="cabinSec">
+    <h2>小屋信箱 <span class="muted" id="cabinAt"></span></h2>
+    <div id="cabinBody" class="kv empty notescroll">正在开门…</div>
+    <div class="write hide" id="cabinWrite">
+      <textarea id="noteText" placeholder="给他留一封信。上锁的信他只知道有,看不到字;你什么时候开锁,他什么时候能读。"></textarea>
+      <div class="row">
+        <label><input type="checkbox" id="noteLock" checked> 上锁</label>
+        <button id="noteSend">留下</button>
+      </div>
+      <div class="hint" id="noteHint"></div>
+    </div>
   </div>
 
   <div class="sec">
@@ -181,6 +215,16 @@ function petalSVG(drives){
   return s+'</svg>';
 }
 const PASTEL=['#e8b4a0','#a9c6b5','#a9bede','#cdb6dc','#e3cf9e','#dbabb7','#b7c9a8'];
+// 时间一律显示成本地 月-日 时:分;今天的只显示 时:分
+function fmtAt(iso){
+  if(!iso)return'';
+  const t=new Date(iso);if(isNaN(t))return'';
+  const pad=n=>String(n).padStart(2,'0');
+  const hm=pad(t.getHours())+':'+pad(t.getMinutes());
+  const today=new Date();
+  return (t.toDateString()===today.toDateString()?'':(t.getMonth()+1)+'/'+t.getDate()+' ')+hm;
+}
+function loadMood(){
 fetch('/api/mood').then(r=>r.json()).then(d=>{
   const el=document.getElementById('moodBody');
   if(!d||!d.ok){el.textContent=(d&&d.reason)||'心潮不在线';return}
@@ -207,8 +251,61 @@ fetch('/api/mood').then(r=>r.json()).then(d=>{
     document.getElementById('moodMore').innerHTML=html;
     document.getElementById('moodFold').classList.remove('hide');
   }
-  if(d.at)document.getElementById('moodAt').textContent=String(d.at).replace('T',' ').slice(5,16);
+  // 右上角不再显示"快照生成时间"(那个永远是现在) —— 显示他的心上次真正结算的时间,
+  // 和你们上次见面的时间。结算停了(电脑关着)一眼就能看出来。
+  const settled=fmtAt(d.lastSettledAt),met=fmtAt(d.lastConversationAt||d.lastHeartbeatAt);
+  const parts=[];if(settled)parts.push('结算 '+settled);if(met)parts.push('见面 '+met);
+  document.getElementById('moodAt').textContent=parts.join(' · ')||(d.at?fmtAt(d.at):'');
 }).catch(()=>{});
+}
+loadMood();
+// 面板每分钟自己刷一次;切回这个页面时也刷(服务端有 60 秒缓存,不会打爆心潮)
+setInterval(loadMood,60e3);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadMood();});
+
+// ── 小屋信箱 ──
+let cabinSeenIds=new Set();
+function renderNotes(d){
+  const el=document.getElementById('cabinBody');
+  if(!d||!d.ok){el.className='kv empty';el.textContent=(d&&d.reason)||'小屋没开门';return}
+  const notes=d.notes||[];
+  document.getElementById('cabinWrite').classList.toggle('hide',!d.canWrite);
+  if(!d.canWrite)document.getElementById('cabinAt').textContent='只能看';
+  if(!notes.length){el.className='kv empty';el.textContent='还没有信。'+(d.canWrite?'写一封?':'');return}
+  el.className='kv notescroll';
+  el.innerHTML=notes.map(n=>{
+    const mine=n.from==='user';
+    const unread=!mine&&!n.readAt&&!cabinSeenIds.has(n.id);
+    return '<div class="note '+(mine?'me':'ai')+'" data-id="'+esc(n.id)+'">'
+      +'<div class="nh">'+(unread?'<span class="unread"></span>':'')+'<b>'+(mine?'我':'小克')+'</b><span>'+esc(fmtAt(n.createdAt))+'</span>'
+      +(mine&&d.canWrite?'<button class="lk'+(n.locked?' on':'')+'" data-id="'+esc(n.id)+'" data-locked="'+(n.locked?'1':'0')+'">'+(n.locked?'🔒 上锁中,点开锁':'🔓 他能读,点上锁')+'</button>':(mine?'<span class="lk">'+(n.locked?'🔒':'🔓')+'</span>':''))
+      +'</div><div class="nb">'+esc(n.content)+'</div></div>';
+  }).join('');
+  el.querySelectorAll('button.lk').forEach(b=>b.onclick=async()=>{
+    b.disabled=true;
+    const r=await fetch('/api/cabin/note',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.id,locked:b.dataset.locked!=='1'})}).then(r=>r.json()).catch(()=>null);
+    if(!r||!r.ok){b.disabled=false;alert((r&&r.reason)||'没改成');return}
+    loadCabin();
+  });
+  // 他写的、还没标已读的: 她这一眼看过了,就告诉心潮
+  const fresh=notes.filter(n=>n.from==='ai'&&!n.readAt).map(n=>n.id);
+  if(fresh.length&&d.canWrite){
+    fresh.forEach(id=>cabinSeenIds.add(id));
+    fetch('/api/cabin/read',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ids:fresh})}).catch(()=>{});
+  }
+}
+function loadCabin(){fetch('/api/cabin').then(r=>r.json()).then(renderNotes).catch(()=>renderNotes(null));}
+loadCabin();
+document.getElementById('noteSend').onclick=async()=>{
+  const ta=document.getElementById('noteText'),btn=document.getElementById('noteSend'),hint=document.getElementById('noteHint');
+  const content=ta.value.trim();if(!content)return;
+  btn.disabled=true;hint.textContent='放进去…';
+  const r=await fetch('/api/cabin/note',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({content,locked:document.getElementById('noteLock').checked})}).then(r=>r.json()).catch(()=>null);
+  btn.disabled=false;
+  if(!r||!r.ok){hint.textContent=(r&&r.reason)||'没留下,再试一次';return}
+  ta.value='';hint.textContent=document.getElementById('noteLock').checked?'留下了。上锁的信他只知道有一封。':'留下了。他下次醒来就能读到。';
+  loadCabin();
+};
 
 // 他的梦境: 余韵做门面,点一下看完整的梦
 fetch('/api/dreams').then(r=>r.json()).then(d=>{

@@ -80,3 +80,34 @@ docker compose up -d
 
 - `xinchao/`(旧部署包)保留作 2.6 参考,回滚时还用得上
 - bunny 的心潮面板、心事时间线、梦境注入走的 `/v1/*` 接口 3.x 全兼容,零改动
+
+## 开门: 让兔窝「小屋」页能写信(3.x)
+
+心潮 3.x 自带「私密小屋」: 她留的信默认上锁,他只知道有一封;她开锁他才能读。
+以前这扇门一直没开,所以 claude.ai 那边的 `xinchao_cabin_inbox` 永远是空的。
+兔窝 `house.html` 现在有「小屋信箱」区块: 看信、写信、上锁/开锁,全部走兔窝服务端代理。
+
+1. 心潮 `.env` 加三行(模板里有注释): `DASHBOARD_ENABLED=true`、
+   `DASHBOARD_PUBLIC_BASE_URL=https://xinchao.jiakeparents.top`、
+   `DASHBOARD_ACCESS_TOKEN=<新生成的随机串,和 SERVICE_TOKEN 不同>`
+2. `docker compose -f compose.solo.yaml up -d` 重建
+3. bunny(Vercel)环境变量加 `XINCHAO_DASHBOARD_TOKEN=<同一串>`,重新部署
+4. 打开小屋页: 信箱区块出现输入框就通了;只配了 1-2 没配 3 的话,信箱只能看不能写
+
+## 补档: 2026-09 的性格自评
+
+九月漏评了,十月已经评过。`xinchao_personality_reflect` 只会把最新一次当当前月,
+直接补会把十月顶掉,所以改用脚本按时间顺序插回档案(他回忆九月后写好的分值和理由都在脚本里):
+
+```powershell
+node C:\Users\23803\bunny-home-server\xinchao3\backfill-personality-2026-09.mjs --dry-run   # 先看
+node C:\Users\23803\bunny-home-server\xinchao3\backfill-personality-2026-09.mjs             # 再写
+```
+
+写之前会自动留一份 `personality.json.bak-*`;心潮按文件时间重读,不用重启。
+之后 chat 端拉 `xinchao_personality_stats` 应显示已建档 3 个月。
+
+## 备份任务要重装一次
+
+旧任务只在每天 04:30 跑,电脑那会儿多半关着,保险箱里一次备份都没进过。
+双击 `install-backup-task.bat`: 改成「开机后 5 分钟 + 每天 04:30」两个触发点,指向 3.x 的备份脚本,装完当场跑一次。
