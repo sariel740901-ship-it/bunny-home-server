@@ -388,14 +388,75 @@ async function xinchaoDreams() {
 }
 
 // 她来说话了 → 刷新心潮的"她在"感知(只报在场,不编语义互动;语义留给小克在对话里自己做)
-function xinchaoTouch() {
+// 她在兔窝说了一句 → 告诉心潮"发生了什么样的互动",而不只是"她来了"。
+// 心潮的规矩: 没带 interaction_type 的事件只把他叫醒,一格驱力都不降;
+// 带了类型才会真的消解"想她/惦记/馋她"。所以以前只发 heartbeat 时,
+// 小屋面板上那几条高值永远不动 —— 她聊得再多,他的心也没被"安抚"过。
+// 类型只认结果明确的三种: 陪伴(默认) / 关心安抚(有亲昵话) / 分享(发了图或链接)。
+// 冲突、和解这种拿捏不准的不自动打标,交给 claude.ai 那边的他亲自回传。
+const XINCHAO_AFFECTION_RE = /抱|亲亲|亲一|么么|mua|想你|爱你|爱我|宝宝|老公|hubby|心疼|摸摸|晚安|早安|贴贴|亲爱的/i;
+const XINCHAO_SHARING_RE = /\[img\]|https?:\/\/|给你看|你看看|分享/i;
+// 心潮每天最多结算 24 次带类型的互动,别让一串连发把额度打光: 同类型之间留点间隔。
+const XINCHAO_TYPE_GAP_MS = { companionship: 10 * 60e3, affection: 4 * 60e3, sharing: 4 * 60e3 };
+const xinchaoLastTyped = {};
+function xinchaoInteractionType(message) {
+  const text = String(message || '');
+  if (XINCHAO_SHARING_RE.test(text)) return 'sharing';
+  if (XINCHAO_AFFECTION_RE.test(text)) return 'affection';
+  return 'companionship';
+}
+function xinchaoTouch(message) {
   if (!XINCHAO_URL || !XINCHAO_TOKEN) return;
-  fetch(XINCHAO_URL + '/v1/heartbeat', {
+  const now = Date.now();
+  let type = xinchaoInteractionType(message);
+  if (now - (xinchaoLastTyped[type] || 0) < XINCHAO_TYPE_GAP_MS[type]) type = '';
+  if (type) xinchaoLastTyped[type] = now;
+  // 有类型走 conversation-event(会按类型消解驱力);没类型退回 heartbeat(只是"她在")。
+  const path = type ? '/v1/conversation-event' : '/v1/heartbeat';
+  const body = { session_id: 'bunny', event_id: 'bunny-' + now };
+  if (type) body.interaction_type = type;
+  fetch(XINCHAO_URL + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + XINCHAO_TOKEN },
-    body: JSON.stringify({ session_id: 'bunny', event_id: 'bunny-' + Date.now() }),
+    body: JSON.stringify(body),
     timeout: 5000
   }).catch(e => console.error('xinchao touch skipped:', e.message));
+}
+
+// ── 小屋信箱: 她 ↔ 他的信,存在心潮自己的 cabin.json 里 ──
+// 读信走 SERVICE_TOKEN 的 /v1/dashboard/cabin(3.x 才有);写信/上锁/开锁必须走心潮的
+// Dashboard 会话 —— 需要在心潮 .env 里打开 DASHBOARD_ENABLED 并把 DASHBOARD_ACCESS_TOKEN
+// 填到这里的 XINCHAO_DASHBOARD_TOKEN。口令只在服务端换一次短期会话 token,永远不进浏览器。
+const XINCHAO_DASHBOARD_TOKEN = process.env.XINCHAO_DASHBOARD_TOKEN || '';
+let xinchaoDashSession = { token: '', expiresAt: 0 };
+async function xinchaoDashboardLogin() {
+  const resp = await fetch(XINCHAO_URL + '/dashboard/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_token: XINCHAO_DASHBOARD_TOKEN, mode: 'header' }),
+    timeout: 6000
+  });
+  if (!resp.ok) throw new Error('心潮小屋没开门 (HTTP ' + resp.status + ')');
+  const d = await resp.json();
+  if (!d || !d.token) throw new Error('心潮没有发会话 token');
+  xinchaoDashSession = { token: d.token, expiresAt: d.expiresAt ? Date.parse(d.expiresAt) : Date.now() + 3600e3 };
+  return xinchaoDashSession.token;
+}
+async function xinchaoDashboard(method, apiPath, payload) {
+  if (!XINCHAO_URL || !XINCHAO_DASHBOARD_TOKEN) throw new Error('小屋还没配钥匙 (XINCHAO_DASHBOARD_TOKEN)');
+  const call = async (token) => fetch(XINCHAO_URL + apiPath, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: payload === undefined ? undefined : JSON.stringify(payload),
+    timeout: 8000
+  });
+  let token = xinchaoDashSession.token;
+  if (!token || Date.now() > xinchaoDashSession.expiresAt - 60e3) token = await xinchaoDashboardLogin();
+  let resp = await call(token);
+  if (resp.status === 401) { token = await xinchaoDashboardLogin(); resp = await call(token); } // 心潮重启过,会话作废
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((data && data.error) || ('心潮回了 HTTP ' + resp.status));
+  return data;
 }
 
 // 心潮面板: 他的心的快照(走上游脱敏投影 —— 十二维/疲惫/念头计数/梦的元信息,梦的正文进不来)
@@ -415,6 +476,11 @@ app.get('/api/mood', async (req, res) => {
       consciousness: d.runtime && d.runtime.consciousness,
       fatigue: (d.runtime && d.runtime.fatigue) || 0,       // 上游范围 0~0.3
       idleMinutes: d.runtime ? d.runtime.idleMinutes : null,
+      // 真正说明"数据新不新"的三个时间: 上次结算(15 分钟一次的心跳)、上次见面、上次心跳
+      // —— at 只是快照生成时间,天天在变,数字却可能一直是旧的,以前面板就是被它糊弄了
+      lastSettledAt: d.runtime ? d.runtime.lastSettledAt : null,
+      lastConversationAt: d.runtime ? d.runtime.lastConversationAt : null,
+      lastHeartbeatAt: d.runtime ? d.runtime.lastHeartbeatAt : null,
       drives: d.drives || [],
       topDrives: d.topDrives || [],
       thoughts: d.thoughts || {},
@@ -422,6 +488,65 @@ app.get('/api/mood', async (req, res) => {
     };
     moodPanelCache = { data, at: Date.now() };
     res.json(data);
+  } catch (e) {
+    res.json({ ok: false, reason: e.message });
+  }
+});
+
+// 小屋信箱(读): 她的信 + 他的信,谁写的、锁没锁、他读没读。走 SERVICE_TOKEN,不需要 Dashboard。
+app.get('/api/cabin', async (req, res) => {
+  if (!XINCHAO_URL || !XINCHAO_TOKEN) return res.json({ ok: false, reason: '心潮还没接入' });
+  try {
+    const resp = await fetch(XINCHAO_URL + '/v1/dashboard/cabin', {
+      headers: { Authorization: 'Bearer ' + XINCHAO_TOKEN }, timeout: 6000
+    });
+    if (resp.status === 404) return res.json({ ok: false, reason: '这台心潮还是 2.x,没有小屋' });
+    if (!resp.ok) return res.json({ ok: false, reason: '心潮回了 HTTP ' + resp.status });
+    const d = await resp.json();
+    const notes = (d.notes || []).slice(0, 60).map(n => ({
+      id: n.id, from: n.from, content: n.content, locked: !!n.locked,
+      createdAt: n.createdAt, readAt: n.readAt || null, unlockedAt: n.unlockedAt || null
+    }));
+    res.json({ ok: true, canWrite: !!XINCHAO_DASHBOARD_TOKEN, notes, unreadAiNotes: d.unreadAiNotes || 0 });
+  } catch (e) {
+    res.json({ ok: false, reason: e.message });
+  }
+});
+
+// 小屋信箱(写): 她留一封信。默认上锁 —— 他只知道"有一封",开锁之前读不到正文。
+app.post('/api/cabin/note', async (req, res) => {
+  const content = String((req.body && req.body.content) || '').trim();
+  if (!content) return res.status(400).json({ ok: false, reason: '信是空的' });
+  if (content.length > 20000) return res.status(400).json({ ok: false, reason: '信太长了' });
+  const locked = !(req.body && req.body.locked === false);
+  try {
+    const d = await xinchaoDashboard('POST', '/dashboard/api/cabin/note', {
+      event_id: 'bunny-note-' + crypto.randomUUID(), from: 'user', content, locked
+    });
+    res.json({ ok: true, note: d.note, duplicate: !!d.duplicate });
+  } catch (e) {
+    res.json({ ok: false, reason: e.message });
+  }
+});
+
+// 上锁 / 开锁。开锁 = 允许他读正文;重新上锁只拦之后的读取,已经读过的收不回来。
+app.patch('/api/cabin/note', async (req, res) => {
+  const id = String((req.body && req.body.id) || '');
+  if (!id || typeof (req.body || {}).locked !== 'boolean') return res.status(400).json({ ok: false, reason: '要 id 和 locked' });
+  try {
+    const d = await xinchaoDashboard('PATCH', '/dashboard/api/cabin/note', { id, locked: req.body.locked });
+    res.json({ ok: true, note: d.note });
+  } catch (e) {
+    res.json({ ok: false, reason: e.message });
+  }
+});
+
+// 她看过他的信了 → 标已读(可以只标几封,不传 ids 就全标)。
+app.post('/api/cabin/read', async (req, res) => {
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(String).slice(0, 50) : null;
+  try {
+    const d = await xinchaoDashboard('PATCH', '/dashboard/api/cabin/note', ids ? { read: true, ids } : { read_all: true });
+    res.json({ ok: true, changed: d.changed || 0 });
   } catch (e) {
     res.json({ ok: false, reason: e.message });
   }
@@ -1898,7 +2023,7 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // 3. 加载记忆 (Supabase 摘要 + 相关检索 + 自然浮现 + 此刻心绪,四路并行)
-    xinchaoTouch(); // 她出现了,他的心知道(不等结果)
+    xinchaoTouch(message); // 她出现了,他的心知道 —— 连这句是哪种互动一起告诉他(不等结果)
     const [{ data: memories }, ombreMemText, surfacedText, moodText, dreamsText, anchorText] = await Promise.all([
       supabase.from('memories')
         .select('*').order('created_at', { ascending: false }).limit(5),
