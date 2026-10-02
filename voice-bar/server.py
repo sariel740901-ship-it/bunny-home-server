@@ -121,7 +121,8 @@ def save_config(cfg: dict):
 
 # ── TTS Engines ────────────────────────────────────────────
 
-SING_TAG_RE = re.compile(r"\[(sing|sings|singing)\]", re.I)
+# 认 [sings] / [singing],也认带风格描述的 [sings a gentle lullaby, slow and melodic](v4 支持)
+SING_TAG_RE = re.compile(r"\[(sing|sings|singing)(\s[^\]]*)?\]", re.I)
 
 # ElevenLabs 可选模型。v4 系列的 voice_settings 只认 stability / similarity_boost,
 # 传 speed 会被拒,所以按模型决定要不要带 speed。
@@ -487,8 +488,10 @@ async def send_sticker(name: str) -> StickerPayload:
     description=(
         "发送一条语音消息。输入要说的话，会用小克的音色生成语音，并在聊天里渲染成一条可播放的语音条气泡。"
         "支持 ElevenLabs v3 音频标签：在文本里用方括号写 [laughs]、[whispers]、[sighs]、[excited] 等，"
-        "可以控制语气。想唱歌就把 sing 设为 true 并传歌词（多行歌词用换行分开），"
+        "可以控制语气。v4 模型还能把标签写成完整指令，如 [said softly with a smile]。"
+        "想唱歌就把 sing 设为 true 并传歌词（多行歌词用换行分开），"
         "会自动切到更放得开的声音设置并加上 [singing] 标签，例如 text=\"月亮代表我的心\\n你问我爱你有多深\", sing=true。"
+        "想指定唱法就自己在歌词开头写带描述的标签，如 [sings a gentle lullaby, slow and melodic]，这时不会再额外加标签。"
         "如果她说在手机上看不到语音条，把返回结果里的 audioUrl 链接直接发给她，点开即可播放。"
     ),
     meta=WIDGET_META,
